@@ -15,6 +15,7 @@ export default function BankPanel({ room, players }: Props) {
     const [bankModal, setBankModal] = useState(false);
     const [potModal, setPotModal] = useState(false);
     const [salaryModal, setSalaryModal] = useState(false);
+    const [endGameModal, setEndGameModal] = useState(false);
 
     return (
         <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-yellow-6)' }}>
@@ -33,19 +34,35 @@ export default function BankPanel({ room, players }: Props) {
                     </Button>
                 </Group>
 
-                <Group grow>
-                    <Button size="xs" variant="outline" onClick={() => setPotModal(true)}>
-                        Pot Ops
-                    </Button>
-                    <Button size="xs" color="red" variant="subtle" leftSection={<IconFlag size={16} />} onClick={() => finishGame(room.room_code)}>
-                        End Game
-                    </Button>
-                </Group>
+                <Button size="xs" variant="outline" onClick={() => setPotModal(true)}>
+                    Pot Operations
+                </Button>
+
+                <Button
+                    size="xs"
+                    color="red"
+                    variant="subtle"
+                    leftSection={<IconFlag size={16} />}
+                    onClick={() => setEndGameModal(true)}
+                    mt="sm"
+                >
+                    End Game
+                </Button>
             </Stack>
 
             <BankModal opened={bankModal} onClose={() => setBankModal(false)} room={room} players={players} />
             <PotModal opened={potModal} onClose={() => setPotModal(false)} room={room} players={players} />
             <SalaryModal opened={salaryModal} onClose={() => setSalaryModal(false)} room={room} players={players} />
+
+            <Modal opened={endGameModal} onClose={() => setEndGameModal(false)} title="End Game Confirmation">
+                <Stack>
+                    <Text>Are you sure you want to end the game? This action cannot be undone.</Text>
+                    <Group grow>
+                        <Button variant="default" onClick={() => setEndGameModal(false)}>Cancel</Button>
+                        <Button color="red" onClick={() => finishGame(room.room_code)}>End Game</Button>
+                    </Group>
+                </Stack>
+            </Modal>
         </Paper>
     );
 }

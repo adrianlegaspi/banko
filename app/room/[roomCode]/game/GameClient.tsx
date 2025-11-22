@@ -2,6 +2,7 @@
 
 import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea } from '@mantine/core';
 import { IconSend, IconReceipt2, IconQrcode } from '@tabler/icons-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
@@ -93,13 +94,53 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 </Group>
 
                 {/* Balance Card */}
-                <Paper p="xl" radius="md" withBorder style={{ background: 'linear-gradient(135deg, var(--mantine-color-violet-9) 0%, var(--mantine-color-grape-9) 100%)' }}>
-                    <Stack align="center" gap="xs">
-                        <Text size="sm" c="white" opacity={0.8}>Your Balance</Text>
-                        <Title order={1} c="white" style={{ fontSize: '3rem' }}>${myBalance.toLocaleString()}</Title>
-                        <Avatar color={currentPlayer.color} size="lg" radius="xl">{currentPlayer.nickname[0]}</Avatar>
-                        <Text c="white">{currentPlayer.nickname}</Text>
+                <Paper
+                    p="xl"
+                    radius="lg"
+                    withBorder
+                    style={{
+                        background: 'linear-gradient(135deg, var(--mantine-color-violet-9) 0%, var(--mantine-color-grape-9) 100%)',
+                        color: 'white',
+                        position: 'relative',
+                        overflow: 'hidden',
+                        minHeight: '220px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        boxShadow: '0 10px 20px rgba(0,0,0,0.2)'
+                    }}
+                >
+                    {/* Decorative Circles */}
+                    <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ position: 'absolute', bottom: '-30px', left: '-30px', width: '150px', height: '150px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
+
+                    <Group justify="space-between" align="start">
+                        <div>
+                            <Text fw={700} size="lg" style={{ letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.9 }}>
+                                {room.bank_display_name}
+                            </Text>
+                            <Text size="xs" c="white" opacity={0.6}>Debit Card</Text>
+                        </div>
+                        <IconQrcode size={32} style={{ opacity: 0.8 }} />
+                    </Group>
+
+                    <Stack gap={0} my="md">
+                        <Text size="sm" c="white" opacity={0.8} mb={-5}>Current Balance</Text>
+                        <Title order={1} c="white" style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-1px' }}>
+                            ${myBalance.toLocaleString()}
+                        </Title>
                     </Stack>
+
+                    <Group justify="space-between" align="end">
+                        <Group gap="xs">
+                            <Avatar color={currentPlayer.color} size="md" radius="xl">{currentPlayer.nickname[0]}</Avatar>
+                            <Stack gap={0}>
+                                <Text size="xs" opacity={0.6} lh={1}>Card Holder</Text>
+                                <Text fw={600} size="lg">{currentPlayer.nickname}</Text>
+                            </Stack>
+                        </Group>
+                        <Text size="xl" fw={700} style={{ opacity: 0.5, letterSpacing: '2px' }}>•••• {room.room_code}</Text>
+                    </Group>
                 </Paper>
 
                 {/* Pending Requests Alert */}
@@ -198,9 +239,12 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 />
             </Modal>
 
-            {/* QR Modal - TBD */}
+            {/* QR Modal */}
             <Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request">
-                <Text c="dimmed">Coming soon...</Text>
+                <QRRequestForm
+                    roomCode={room.room_code}
+                    currentPlayerId={currentPlayer.id}
+                />
             </Modal>
         </Container>
     );
@@ -300,6 +344,55 @@ function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
             <Button onClick={handleRequest} loading={loading} disabled={!fromPlayerId || !amount}>
                 Request ${amount}
             </Button>
+        </Stack>
+    );
+}
+
+function QRRequestForm({ roomCode, currentPlayerId }: { roomCode: string, currentPlayerId: string }) {
+    const [amount, setAmount] = useState<number | string>('');
+
+    // Construct the URL: /room/[code]/pay?to=[id]&amount=[amount]
+    // We use window.location.origin to get the full URL if on client, but for SSR safety we can just use relative or construct it carefully.
+    // Since this is a client component, window is available.
+
+    const [qrUrl, setQrUrl] = useState('');
+
+    useEffect(() => {
+        if (amount && Number(amount) > 0) {
+            const origin = window.location.origin;
+            const url = `${origin}/room/${roomCode}/pay?to=${currentPlayerId}&amount=${amount}`;
+            setQrUrl(url);
+        } else {
+            setQrUrl('');
+        }
+    }, [amount, roomCode, currentPlayerId]);
+
+    return (
+        <Stack align="center" gap="md">
+            <NumberInput
+                label="Amount to Request"
+                placeholder="0"
+                value={amount}
+                onChange={setAmount}
+                min={0}
+                w="100%"
+            />
+
+            {qrUrl ? (
+                <Paper p="md" withBorder radius="md" bg="white">
+                    <QRCodeSVG value={qrUrl} size={200} />
+                </Paper>
+            ) : (
+                <Paper p="md" withBorder radius="md" bg="gray.1" w={200} h={200} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text c="dimmed" size="sm">Enter amount to generate QR</Text>
+                </Paper>
+            )}
+
+            {qrUrl && (
+                <Text size="xs" c="dimmed" ta="center" style={{ wordBreak: 'break-all' }}>
+                    Scan to pay
+                </Text>
+            )}
         </Stack>
     );
 }
