@@ -391,7 +391,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                     <Button
                                         fullWidth
                                         size="lg"
-                                        color="orange"
+                                        color="violet"
                                         variant="light"
                                         leftSection={<IconSquare size={24} />}
                                         onClick={async () => {
@@ -437,30 +437,35 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                             }
 
                             {/* Players List */}
-                            <Paper p="md" radius="md" withBorder>
-                                <Text fw={600} mb="sm">All Players</Text>
+                            <Paper p="md" radius="md" shadow="sm" style={{ background: 'var(--mantine-color-dark-7)' }}>
+                                <Group justify="space-between" mb="sm">
+                                    <Text fw={600}>All Players</Text>
+                                    <Badge variant="light" color="gray">{players.length}</Badge>
+                                </Group>
                                 <Stack gap="xs">
                                     {players.map((p) => (
-                                        <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
-                                            <Group gap="sm">
-                                                <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                                <div>
-                                                    <Group gap="xs">
-                                                        <Text size="sm" fw={500}>{p.nickname}</Text>
-                                                        {p.status === 'defeated' && (
-                                                            <Badge size="xs" color="red" variant="filled">Defeated</Badge>
-                                                        )}
-                                                    </Group>
-                                                </div>
+                                        <Paper key={p.id} p="xs" radius="md" style={{ background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
+                                            <Group justify="space-between">
+                                                <Group gap="sm">
+                                                    <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
+                                                    <div>
+                                                        <Group gap="xs">
+                                                            <Text size="sm" fw={500}>{p.nickname}</Text>
+                                                            {p.status === 'defeated' && (
+                                                                <Badge size="xs" color="red" variant="filled">Defeated</Badge>
+                                                            )}
+                                                        </Group>
+                                                    </div>
+                                                </Group>
+                                                <Text size="sm" fw={600}>${p.current_balance}</Text>
                                             </Group>
-                                            <Text size="sm" fw={600}>${p.current_balance}</Text>
-                                        </Group>
+                                        </Paper>
                                     ))}
                                 </Stack>
                             </Paper>
 
                             {/* Recent Activity */}
-                            <Paper p="md" radius="md" withBorder>
+                            <Paper p="md" radius="md" shadow="sm" style={{ background: 'var(--mantine-color-dark-7)' }}>
                                 <Text fw={600} mb="sm">Recent Activity</Text>
                                 {(() => {
                                     const allActivity = [
@@ -711,6 +716,12 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
 
                     // Use the camera at current index
                     const cameraId = devices[cameraIndex % devices.length].id;
+
+                    // Ensure element exists before starting
+                    if (!document.getElementById('reader')) {
+                        console.warn("Reader element not found, skipping start");
+                        return;
+                    }
 
                     await html5QrCode.start(
                         cameraId,

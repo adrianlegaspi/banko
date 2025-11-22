@@ -1,6 +1,6 @@
 'use client'
 
-import { Paper, Title, Stack, Group, Button, NumberInput, Select, Modal, Text, Badge, SimpleGrid } from '@mantine/core';
+import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl } from '@mantine/core';
 import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { Player, Room } from '@/app/actions';
@@ -28,8 +28,8 @@ export default function BankPanel({ room, players }: Props) {
                 {/* Header */}
                 <Group justify="space-between" mb="xs">
                     <Group gap="sm">
-                        <IconBuildingBank size={28} style={{ color: 'var(--mantine-color-yellow-6)' }} />
-                        <Title order={3} style={{ color: 'var(--mantine-color-yellow-6)' }}>
+                        <IconBuildingBank size={28} style={{ color: 'var(--mantine-color-blue-3)' }} />
+                        <Title order={3} style={{ color: 'var(--mantine-color-blue-3)' }}>
                             {room.bank_display_name}
                         </Title>
                     </Group>
@@ -228,26 +228,17 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
     return (
         <Modal opened={opened} onClose={onClose} title="Bank Transfers">
             <Stack gap="md">
-                <Group grow mb="xs">
-                    <Button
-                        size="md"
-                        color="green"
-                        variant={mode === 'to' ? 'filled' : 'light'}
-                        onClick={() => setMode('to')}
-                        leftSection={<IconArrowRight size={20} />}
-                    >
-                        Give Money
-                    </Button>
-                    <Button
-                        size="md"
-                        color="orange"
-                        variant={mode === 'from' ? 'filled' : 'light'}
-                        onClick={() => setMode('from')}
-                        leftSection={<IconArrowLeft size={20} />}
-                    >
-                        Collect Money
-                    </Button>
-                </Group>
+                <SegmentedControl
+                    value={mode}
+                    onChange={(value) => setMode(value as 'to' | 'from')}
+                    data={[
+                        { label: 'Give Money', value: 'to' },
+                        { label: 'Collect Money', value: 'from' },
+                    ]}
+                    fullWidth
+                    size="md"
+                    color={mode === 'to' ? 'green' : 'orange'}
+                />
 
                 <Paper p="md" withBorder style={{ borderColor: mode === 'to' ? 'var(--mantine-color-green-8)' : 'var(--mantine-color-orange-8)', background: 'transparent' }}>
                     <Stack gap="md">
@@ -360,6 +351,27 @@ function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose
                             size="md"
                             leftSection={<IconCoin size={16} />}
                             required
+                            rightSectionWidth={80}
+                            rightSection={
+                                mode === 'in' && (
+                                    <Button
+                                        size="xs"
+                                        variant="subtle"
+                                        onClick={() => setAmount(players.find(p => p.id === playerId)?.current_balance || 0)}
+                                        disabled={!playerId}
+                                    >
+                                        Max
+                                    </Button>
+                                ) || mode === 'out' && (
+                                    <Button
+                                        size="xs"
+                                        variant="subtle"
+                                        onClick={() => setAmount(room.shared_pot_balance || 0)}
+                                    >
+                                        Pay All
+                                    </Button>
+                                )
+                            }
                         />
                     </Stack>
                 </Paper>
