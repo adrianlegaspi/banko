@@ -1,7 +1,7 @@
 'use client'
 
 import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon, Tabs, ScrollArea, TextInput, SegmentedControl } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin, IconHome, IconBuildingSkyscraper } from '@tabler/icons-react';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin, IconHome, IconBuildingSkyscraper, IconVolume, IconVolumeOff } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
@@ -45,6 +45,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const playersRef = useRef(players);
     const audioContextRef = useRef<AudioContext | null>(null);
     const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [muted, setMuted] = useState(false);
 
     useEffect(() => {
         playersRef.current = players;
@@ -58,6 +59,21 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
             clearTimeout(toastTimeoutRef.current);
         }
         toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+    }, []);
+
+    const toggleMute = useCallback(() => {
+        setMuted((m) => {
+            const next = !m;
+            try { localStorage.setItem('banko_muted', String(next)); } catch { }
+            return next;
+        });
+    }, []);
+
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('banko_muted');
+            if (stored != null) setMuted(stored === 'true');
+        } catch { }
     }, []);
 
     // Memoize supabase client to prevent re-creation on every render
@@ -77,6 +93,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     };
 
     const playNotificationSound = () => {
+        if (muted) return;
         try {
             initAudioContext();
             if (!audioContextRef.current) return;
@@ -126,9 +143,11 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 // Check if current player received money
                 if (newTransaction.to_player_id === currentPlayer.id) {
                     // Play success sound
-                    const audio = new Audio('/assets/sounds/success.mp3');
-                    audio.volume = 0.5;
-                    audio.play().catch(e => console.error('Audio play failed', e));
+                    if (!muted) {
+                        const audio = new Audio('/assets/sounds/success.mp3');
+                        audio.volume = 0.5;
+                        audio.play().catch(e => console.error('Audio play failed', e));
+                    }
 
                     // Fetch transaction details to get sender info
                     supabase
@@ -146,6 +165,22 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                 });
                             }
                         });
+                }
+
+                // Check if bank collected from current player
+                if (newTransaction.type === 'player_to_bank' && newTransaction.from_player_id === currentPlayer.id) {
+                    if (!muted) {
+                        const audio = new Audio('/assets/sounds/error.mp3');
+                        audio.volume = 0.5;
+                        audio.play().catch(e => console.error('Audio play failed', e));
+                    }
+
+                    const reason = newTransaction.description || 'Bank collection';
+                    showToast({
+                        title: 'Paid Bank',
+                        message: `${reason}: -$${newTransaction.amount}`,
+                        color: 'red'
+                    });
                 }
 
                 // Update transactions list
@@ -222,10 +257,15 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
             <Stack gap="md">
                 {/* Header */}
                 <Group justify="space-between">
-                    <div>
-                        <Title order={3}>{room.room_name}</Title>
-                        <Text size="sm" c="dimmed">{room.room_code}</Text>
-                    </div>
+                    <Group gap="sm" align="center">
+                        <ActionIcon variant="light" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute'}>
+                            {muted ? <IconVolumeOff size={18} /> : <IconVolume size={18} />}
+                        </ActionIcon>
+                        <div>
+                            <Title order={3}>{room.room_name}</Title>
+                            <Text size="sm" c="dimmed">{room.room_code}</Text>
+                        </div>
+                    </Group>
                     <Badge size="lg" color="green">In Progress</Badge>
                 </Group>
 
