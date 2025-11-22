@@ -1,6 +1,6 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid } from '@mantine/core';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid } from '@mantine/core';
 import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
@@ -196,7 +196,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     );
 
     return (
-        <Container size="md" py="md">
+        <Container size="xl" py="md">
             <Stack gap="md">
                 {/* Header */}
                 <Group justify="space-between">
@@ -207,377 +207,388 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     <Badge size="lg" color="green">In Progress</Badge>
                 </Group>
 
-                {/* Shared Pot Display */}
-                <Paper
-                    p="md"
-                    radius="md"
-                    withBorder
-                    style={{
-                        background: 'linear-gradient(135deg, var(--mantine-color-yellow-9) 0%, var(--mantine-color-orange-9) 100%)',
-                        borderColor: 'var(--mantine-color-yellow-6)'
-                    }}
-                >
-                    <Group justify="space-between">
-                        <Group gap="xs">
-                            <IconTrophy size={24} color="white" />
-                            <Text fw={700} c="white">Shared Pot</Text>
-                        </Group>
-                        <Text fw={800} size="xl" c="white">${room.shared_pot_balance || 0}</Text>
-                    </Group>
-                </Paper>
-
-                {/* Balance Card */}
-                <Paper
-                    p="xl"
-                    radius="lg"
-                    withBorder
-                    style={{
-                        background: `linear-gradient(135deg, var(--mantine-color-${currentPlayer.color}-9) 0%, var(--mantine-color-${currentPlayer.color}-7) 100%)`,
-                        color: 'white',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        minHeight: '220px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        boxShadow: '0 10px 20px rgba(0,0,0,0.2)'
-                    }}
-                >
-                    {/* Decorative Circles */}
-                    <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ position: 'absolute', bottom: '-30px', left: '-30px', width: '150px', height: '150px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
-
-                    <Group justify="space-between" align="start">
-                        <div>
-                            <Text fw={700} size="lg" style={{ letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.9 }}>
-                                {room.bank_display_name}
-                            </Text>
-                            <Text size="xs" c="white" opacity={0.6}>Debit Card</Text>
-                        </div>
-                        <IconQrcode size={32} style={{ opacity: 0.8 }} />
-                    </Group>
-
-                    <Stack gap={0} my="md">
-                        <Text size="sm" c="white" opacity={0.8} mb={-5}>Current Balance</Text>
-                        <Title order={1} c="white" style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-1px' }}>
-                            ${myBalance.toLocaleString()}
-                        </Title>
-                    </Stack>
-
-                    <Group justify="space-between" align="end">
-                        <Group gap="xs">
-                            <Avatar color={currentPlayer.color} size="md" radius="xl">{currentPlayer.nickname[0]}</Avatar>
-                            <Stack gap={0}>
-                                <Text size="xs" opacity={0.6} lh={1}>Card Holder</Text>
-                                <Group gap="xs">
-                                    <Text fw={600} size="lg">{currentPlayer.nickname}</Text>
-                                    {isDefeated && (
-                                        <Badge size="sm" color="red" variant="filled">Defeated</Badge>
-                                    )}
-                                </Group>
-                            </Stack>
-                        </Group>
-                        <Text size="xl" fw={700} style={{ opacity: 0.5, letterSpacing: '2px' }}>•••• {room.room_code}</Text>
-                    </Group>
-                </Paper>
-
-                {/* Pending Requests Alert */}
-                {
-                    myPendingRequests.length > 0 && (
-                        <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
-                            <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
-                            <Stack gap="sm">
-                                {myPendingRequests.map(pr => (
-                                    <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
-                                        <div>
-                                            <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
-                                            <Text size="xs" c="dimmed">{pr.description}</Text>
-                                        </div>
-                                        <Group gap="xs">
-                                            <Button size="xs" color="red" variant="subtle" onClick={async () => {
-                                                await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
-                                            }}>Reject</Button>
-                                            <Button size="xs" color="green" onClick={async () => {
-                                                await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
-                                            }}>Pay</Button>
-                                        </Group>
+                <Grid gutter="md">
+                    <Grid.Col span={{ base: 12, md: 5, lg: 4 }}>
+                        <Stack gap="md">
+                            {/* Shared Pot Display */}
+                            <Paper
+                                p="md"
+                                radius="md"
+                                withBorder
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--mantine-color-yellow-9) 0%, var(--mantine-color-orange-9) 100%)',
+                                    borderColor: 'var(--mantine-color-yellow-6)'
+                                }}
+                            >
+                                <Group justify="space-between">
+                                    <Group gap="xs">
+                                        <IconTrophy size={24} color="white" />
+                                        <Text fw={700} c="white">Shared Pot</Text>
                                     </Group>
-                                ))}
-                            </Stack>
-                        </Paper>
-                    )
-                }
-
-                {/* Action Buttons */}
-                {!isDefeated && (
-                    <Stack gap="sm">
-                        <SimpleGrid cols={2} spacing="sm">
-                            <Paper
-                                p="md"
-                                radius="md"
-                                style={{
-                                    background: 'linear-gradient(135deg, var(--mantine-color-blue-6) 0%, var(--mantine-color-indigo-6) 100%)',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s ease'
-                                }}
-                                onClick={() => { initAudioContext(); setSendModalOpen(true); }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                            >
-                                <Stack align="center" gap="xs">
-                                    <IconSend size={32} color="white" />
-                                    <Text fw={600} c="white">Send</Text>
-                                </Stack>
+                                    <Text fw={800} size="xl" c="white">${room.shared_pot_balance || 0}</Text>
+                                </Group>
                             </Paper>
 
+                            {/* Balance Card */}
                             <Paper
-                                p="md"
-                                radius="md"
+                                p="xl"
+                                radius="lg"
+                                withBorder
                                 style={{
-                                    background: 'linear-gradient(135deg, var(--mantine-color-grape-6) 0%, var(--mantine-color-pink-6) 100%)',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s ease'
+                                    background: `linear-gradient(135deg, var(--mantine-color-${currentPlayer.color}-9) 0%, var(--mantine-color-${currentPlayer.color}-7) 100%)`,
+                                    color: 'white',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    minHeight: '220px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                    boxShadow: '0 10px 20px rgba(0,0,0,0.2)'
                                 }}
-                                onClick={() => { initAudioContext(); setRequestModalOpen(true); }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                             >
-                                <Stack align="center" gap="xs">
-                                    <IconReceipt2 size={32} color="white" />
-                                    <Text fw={600} c="white">Request</Text>
-                                </Stack>
-                            </Paper>
+                                {/* Decorative Circles */}
+                                <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                                <div style={{ position: 'absolute', bottom: '-30px', left: '-30px', width: '150px', height: '150px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
 
-                            <Paper
-                                p="md"
-                                radius="md"
-                                style={{
-                                    background: 'linear-gradient(135deg, var(--mantine-color-cyan-6) 0%, var(--mantine-color-teal-6) 100%)',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s ease'
-                                }}
-                                onClick={() => { initAudioContext(); setQrModalOpen(true); }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                            >
-                                <Stack align="center" gap="xs">
-                                    <IconQrcode size={32} color="white" />
-                                    <Text fw={600} c="white">QR Code</Text>
-                                </Stack>
-                            </Paper>
-
-                            <Paper
-                                p="md"
-                                radius="md"
-                                style={{
-                                    background: 'linear-gradient(135deg, var(--mantine-color-violet-6) 0%, var(--mantine-color-grape-6) 100%)',
-                                    cursor: 'pointer',
-                                    transition: 'transform 0.2s ease'
-                                }}
-                                onClick={() => { initAudioContext(); setScanModalOpen(true); }}
-                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                            >
-                                <Stack align="center" gap="xs">
-                                    <IconQrcode size={32} color="white" />
-                                    <Text fw={600} c="white">Scan</Text>
-                                </Stack>
-                            </Paper>
-                        </SimpleGrid>
-
-                        <Button
-                            fullWidth
-                            size="lg"
-                            color="orange"
-                            variant="light"
-                            leftSection={<IconSquare size={24} />}
-                            onClick={async () => {
-                                initAudioContext();
-                                setRolling(true);
-                                try {
-                                    await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
-                                } catch (e) {
-                                    console.error(e);
-                                }
-                                setRolling(false);
-                            }}
-                            loading={rolling}
-                            style={{ height: '60px', fontSize: '1.1rem' }}
-                        >
-                            Roll Dice (d{room.dice_sides || 12})
-                        </Button>
-                    </Stack>
-                )}
-
-                {
-                    isDefeated && (
-                        <Paper p="xl" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-6)', backgroundColor: 'var(--mantine-color-red-9)' }}>
-                            <Stack align="center" gap="sm">
-                                <Text size="xl">💀</Text>
-                                <Text size="lg" fw={700} c="red" ta="center">Player Defeated</Text>
-                                <Text size="sm" c="dimmed" ta="center">You can no longer perform actions, but you can still view the game.</Text>
-                            </Stack>
-                        </Paper>
-                    )
-                }
-
-                {/* Bank Panel (Operator Only) */}
-                {
-                    currentPlayer.is_bank_operator && (
-                        <BankPanel room={room} players={players} />
-                    )
-                }
-
-                {/* Players List */}
-                <Paper p="md" radius="md" withBorder>
-                    <Text fw={600} mb="sm">All Players</Text>
-                    <Stack gap="xs">
-                        {players.map((p) => (
-                            <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
-                                <Group gap="sm">
-                                    <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
+                                <Group justify="space-between" align="start">
                                     <div>
-                                        <Group gap="xs">
-                                            <Text size="sm" fw={500}>{p.nickname}</Text>
-                                            {p.status === 'defeated' && (
-                                                <Badge size="xs" color="red" variant="filled">Defeated</Badge>
-                                            )}
-                                        </Group>
-                                    </div>
-                                </Group>
-                                <Text size="sm" fw={600}>${p.current_balance}</Text>
-                            </Group>
-                        ))}
-                    </Stack>
-                </Paper>
-
-                {/* Recent Activity */}
-                <Paper p="md" radius="md" withBorder>
-                    <Text fw={600} mb="sm">Recent Activity</Text>
-                    {(() => {
-                        const allActivity = [
-                            ...transactions.map((t: any) => ({
-                                id: t.id,
-                                type: 'transaction',
-                                from: t.from_player?.nickname || 'Bank',
-                                to: t.to_player?.nickname || 'Bank',
-                                amount: t.amount,
-                                description: t.description,
-                                created_at: t.created_at
-                            })),
-                            ...paymentRequests
-                                .filter((pr: any) => pr.status !== 'pending')
-                                .map((pr: any) => ({
-                                    id: pr.id,
-                                    type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
-                                    from: pr.from_player?.nickname || 'Unknown',
-                                    to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
-                                    amount: pr.amount,
-                                    description: pr.description,
-                                    created_at: pr.updated_at || pr.created_at
-                                })),
-                            ...gameEvents.map((ge: any) => ({
-                                id: ge.id,
-                                type: 'dice_roll',
-                                from: ge.player?.nickname || 'Unknown',
-                                description: `Rolled a ${ge.payload.roll} (d${ge.payload.sides})`,
-                                created_at: ge.created_at,
-                                payload: ge.payload
-                            }))
-                        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                        const itemsPerPage = 8;
-                        const totalPages = Math.ceil(allActivity.length / itemsPerPage);
-                        const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
-
-                        return (
-                            <>
-                                <Stack gap="xs">
-                                    {paginatedActivity.length === 0 ? (
-                                        <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
-                                    ) : (
-                                        paginatedActivity.map((activity: any) => {
-                                            const timestamp = new Date(activity.created_at);
-                                            const now = new Date();
-                                            const diffMs = now.getTime() - timestamp.getTime();
-                                            const diffMins = Math.floor(diffMs / 60000);
-                                            const diffHours = Math.floor(diffMins / 60);
-                                            const diffDays = Math.floor(diffHours / 24);
-
-                                            let timeAgo = '';
-                                            if (diffDays > 0) {
-                                                timeAgo = `${diffDays}d ago`;
-                                            } else if (diffHours > 0) {
-                                                timeAgo = `${diffHours}h ago`;
-                                            } else if (diffMins > 0) {
-                                                timeAgo = `${diffMins}m ago`;
-                                            } else {
-                                                timeAgo = 'Just now';
-                                            }
-
-                                            return (
-                                                <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
-                                                    <div style={{ flex: 1 }}>
-                                                        <Text size="xs" c="dimmed">
-                                                            {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
-                                                            {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
-                                                            {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
-                                                            {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
-                                                        </Text>
-                                                        {activity.description && (
-                                                            <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
-                                                        )}
-                                                        <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
-                                                            {timeAgo}
-                                                        </Text>
-                                                    </div>
-                                                    {activity.type !== 'dice_roll' && (
-                                                        <Text
-                                                            size="xs"
-                                                            fw={600}
-                                                            c={activity.type === 'request_rejected' ? 'red' : undefined}
-                                                            style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
-                                                        >
-                                                            ${activity.amount}
-                                                        </Text>
-                                                    )}
-                                                    {activity.type === 'dice_roll' && (
-                                                        <Badge size="lg" variant="light" color="orange">
-                                                            {activity.payload.roll}
-                                                        </Badge>
-                                                    )}
-                                                </Group>
-                                            );
-                                        })
-                                    )}
-                                </Stack>
-                                {totalPages > 1 && (
-                                    <Group justify="center" mt="sm" gap="xs">
-                                        <Button
-                                            size="xs"
-                                            variant="subtle"
-                                            onClick={() => setActivityPage(p => Math.max(0, p - 1))}
-                                            disabled={activityPage === 0}
-                                        >
-                                            Previous
-                                        </Button>
-                                        <Text size="xs" c="dimmed">
-                                            Page {activityPage + 1} of {totalPages}
+                                        <Text fw={700} size="lg" style={{ letterSpacing: '1px', textTransform: 'uppercase', opacity: 0.9 }}>
+                                            {room.bank_display_name}
                                         </Text>
-                                        <Button
-                                            size="xs"
-                                            variant="subtle"
-                                            onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
-                                            disabled={activityPage === totalPages - 1}
-                                        >
-                                            Next
-                                        </Button>
+                                        <Text size="xs" c="white" opacity={0.6}>Debit Card</Text>
+                                    </div>
+                                    <IconQrcode size={32} style={{ opacity: 0.8 }} />
+                                </Group>
+
+                                <Stack gap={0} my="md">
+                                    <Text size="sm" c="white" opacity={0.8} mb={-5}>Current Balance</Text>
+                                    <Title order={1} c="white" style={{ fontSize: '3.5rem', fontWeight: 800, letterSpacing: '-1px' }}>
+                                        ${myBalance.toLocaleString()}
+                                    </Title>
+                                </Stack>
+
+                                <Group justify="space-between" align="end">
+                                    <Group gap="xs">
+                                        <Avatar color={currentPlayer.color} size="md" radius="xl">{currentPlayer.nickname[0]}</Avatar>
+                                        <Stack gap={0}>
+                                            <Text size="xs" opacity={0.6} lh={1}>Card Holder</Text>
+                                            <Group gap="xs">
+                                                <Text fw={600} size="lg">{currentPlayer.nickname}</Text>
+                                                {isDefeated && (
+                                                    <Badge size="sm" color="red" variant="filled">Defeated</Badge>
+                                                )}
+                                            </Group>
+                                        </Stack>
                                     </Group>
-                                )}
-                            </>
-                        );
-                    })()}
-                </Paper>
+                                    <Text size="xl" fw={700} style={{ opacity: 0.5, letterSpacing: '2px' }}>•••• {room.room_code}</Text>
+                                </Group>
+                            </Paper>
+
+                            {/* Pending Requests Alert */}
+                            {
+                                myPendingRequests.length > 0 && (
+                                    <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
+                                        <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
+                                        <Stack gap="sm">
+                                            {myPendingRequests.map(pr => (
+                                                <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                                                    <div>
+                                                        <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
+                                                        <Text size="xs" c="dimmed">{pr.description}</Text>
+                                                    </div>
+                                                    <Group gap="xs">
+                                                        <Button size="xs" color="red" variant="subtle" onClick={async () => {
+                                                            await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
+                                                        }}>Reject</Button>
+                                                        <Button size="xs" color="green" onClick={async () => {
+                                                            await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
+                                                        }}>Pay</Button>
+                                                    </Group>
+                                                </Group>
+                                            ))}
+                                        </Stack>
+                                    </Paper>
+                                )
+                            }
+
+                            {/* Action Buttons */}
+                            {!isDefeated && (
+                                <Stack gap="sm">
+                                    <SimpleGrid cols={2} spacing="sm">
+                                        <Paper
+                                            p="md"
+                                            radius="md"
+                                            style={{
+                                                background: 'linear-gradient(135deg, var(--mantine-color-blue-6) 0%, var(--mantine-color-indigo-6) 100%)',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onClick={() => { initAudioContext(); setSendModalOpen(true); }}
+                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            <Stack align="center" gap="xs">
+                                                <IconSend size={32} color="white" />
+                                                <Text fw={600} c="white">Send</Text>
+                                            </Stack>
+                                        </Paper>
+
+                                        <Paper
+                                            p="md"
+                                            radius="md"
+                                            style={{
+                                                background: 'linear-gradient(135deg, var(--mantine-color-grape-6) 0%, var(--mantine-color-pink-6) 100%)',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onClick={() => { initAudioContext(); setRequestModalOpen(true); }}
+                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            <Stack align="center" gap="xs">
+                                                <IconReceipt2 size={32} color="white" />
+                                                <Text fw={600} c="white">Request</Text>
+                                            </Stack>
+                                        </Paper>
+
+                                        <Paper
+                                            p="md"
+                                            radius="md"
+                                            style={{
+                                                background: 'linear-gradient(135deg, var(--mantine-color-cyan-6) 0%, var(--mantine-color-teal-6) 100%)',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onClick={() => { initAudioContext(); setQrModalOpen(true); }}
+                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            <Stack align="center" gap="xs">
+                                                <IconQrcode size={32} color="white" />
+                                                <Text fw={600} c="white">QR Code</Text>
+                                            </Stack>
+                                        </Paper>
+
+                                        <Paper
+                                            p="md"
+                                            radius="md"
+                                            style={{
+                                                background: 'linear-gradient(135deg, var(--mantine-color-violet-6) 0%, var(--mantine-color-grape-6) 100%)',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onClick={() => { initAudioContext(); setScanModalOpen(true); }}
+                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            <Stack align="center" gap="xs">
+                                                <IconQrcode size={32} color="white" />
+                                                <Text fw={600} c="white">Scan</Text>
+                                            </Stack>
+                                        </Paper>
+                                    </SimpleGrid>
+
+                                    <Button
+                                        fullWidth
+                                        size="lg"
+                                        color="orange"
+                                        variant="light"
+                                        leftSection={<IconSquare size={24} />}
+                                        onClick={async () => {
+                                            initAudioContext();
+                                            setRolling(true);
+                                            try {
+                                                await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
+                                            } catch (e) {
+                                                console.error(e);
+                                            }
+                                            setRolling(false);
+                                        }}
+                                        loading={rolling}
+                                        style={{ height: '60px', fontSize: '1.1rem' }}
+                                    >
+                                        Roll Dice (d{room.dice_sides || 12})
+                                    </Button>
+                                </Stack>
+                            )}
+
+                            {
+                                isDefeated && (
+                                    <Paper p="xl" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-6)', backgroundColor: 'var(--mantine-color-red-9)' }}>
+                                        <Stack align="center" gap="sm">
+                                            <Text size="xl">💀</Text>
+                                            <Text size="lg" fw={700} c="red" ta="center">Player Defeated</Text>
+                                            <Text size="sm" c="dimmed" ta="center">You can no longer perform actions, but you can still view the game.</Text>
+                                        </Stack>
+                                    </Paper>
+                                )
+                            }
+
+                        </Stack>
+                    </Grid.Col>
+
+                    <Grid.Col span={{ base: 12, md: 7, lg: 8 }}>
+                        <Stack gap="md">
+                            {/* Bank Panel (Operator Only) */}
+                            {
+                                currentPlayer.is_bank_operator && (
+                                    <BankPanel room={room} players={players} />
+                                )
+                            }
+
+                            {/* Players List */}
+                            <Paper p="md" radius="md" withBorder>
+                                <Text fw={600} mb="sm">All Players</Text>
+                                <Stack gap="xs">
+                                    {players.map((p) => (
+                                        <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
+                                            <Group gap="sm">
+                                                <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
+                                                <div>
+                                                    <Group gap="xs">
+                                                        <Text size="sm" fw={500}>{p.nickname}</Text>
+                                                        {p.status === 'defeated' && (
+                                                            <Badge size="xs" color="red" variant="filled">Defeated</Badge>
+                                                        )}
+                                                    </Group>
+                                                </div>
+                                            </Group>
+                                            <Text size="sm" fw={600}>${p.current_balance}</Text>
+                                        </Group>
+                                    ))}
+                                </Stack>
+                            </Paper>
+
+                            {/* Recent Activity */}
+                            <Paper p="md" radius="md" withBorder>
+                                <Text fw={600} mb="sm">Recent Activity</Text>
+                                {(() => {
+                                    const allActivity = [
+                                        ...transactions.map((t: any) => ({
+                                            id: t.id,
+                                            type: 'transaction',
+                                            from: t.from_player?.nickname || 'Bank',
+                                            to: t.to_player?.nickname || 'Bank',
+                                            amount: t.amount,
+                                            description: t.description,
+                                            created_at: t.created_at
+                                        })),
+                                        ...paymentRequests
+                                            .filter((pr: any) => pr.status !== 'pending')
+                                            .map((pr: any) => ({
+                                                id: pr.id,
+                                                type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
+                                                from: pr.from_player?.nickname || 'Unknown',
+                                                to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
+                                                amount: pr.amount,
+                                                description: pr.description,
+                                                created_at: pr.updated_at || pr.created_at
+                                            })),
+                                        ...gameEvents.map((ge: any) => ({
+                                            id: ge.id,
+                                            type: 'dice_roll',
+                                            from: ge.player?.nickname || 'Unknown',
+                                            description: `Rolled a ${ge.payload.roll} (d${ge.payload.sides})`,
+                                            created_at: ge.created_at,
+                                            payload: ge.payload
+                                        }))
+                                    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                                    const itemsPerPage = 8;
+                                    const totalPages = Math.ceil(allActivity.length / itemsPerPage);
+                                    const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
+
+                                    return (
+                                        <>
+                                            <Stack gap="xs">
+                                                {paginatedActivity.length === 0 ? (
+                                                    <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
+                                                ) : (
+                                                    paginatedActivity.map((activity: any) => {
+                                                        const timestamp = new Date(activity.created_at);
+                                                        const now = new Date();
+                                                        const diffMs = now.getTime() - timestamp.getTime();
+                                                        const diffMins = Math.floor(diffMs / 60000);
+                                                        const diffHours = Math.floor(diffMins / 60);
+                                                        const diffDays = Math.floor(diffHours / 24);
+
+                                                        let timeAgo = '';
+                                                        if (diffDays > 0) {
+                                                            timeAgo = `${diffDays}d ago`;
+                                                        } else if (diffHours > 0) {
+                                                            timeAgo = `${diffHours}h ago`;
+                                                        } else if (diffMins > 0) {
+                                                            timeAgo = `${diffMins}m ago`;
+                                                        } else {
+                                                            timeAgo = 'Just now';
+                                                        }
+
+                                                        return (
+                                                            <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <Text size="xs" c="dimmed">
+                                                                        {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
+                                                                        {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
+                                                                        {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                                        {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
+                                                                    </Text>
+                                                                    {activity.description && (
+                                                                        <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
+                                                                    )}
+                                                                    <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
+                                                                        {timeAgo}
+                                                                    </Text>
+                                                                </div>
+                                                                {activity.type !== 'dice_roll' && (
+                                                                    <Text
+                                                                        size="xs"
+                                                                        fw={600}
+                                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
+                                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
+                                                                    >
+                                                                        ${activity.amount}
+                                                                    </Text>
+                                                                )}
+                                                                {activity.type === 'dice_roll' && (
+                                                                    <Badge size="lg" variant="light" color="orange">
+                                                                        {activity.payload.roll}
+                                                                    </Badge>
+                                                                )}
+                                                            </Group>
+                                                        );
+                                                    })
+                                                )}
+                                            </Stack>
+                                            {totalPages > 1 && (
+                                                <Group justify="center" mt="sm" gap="xs">
+                                                    <Button
+                                                        size="xs"
+                                                        variant="subtle"
+                                                        onClick={() => setActivityPage(p => Math.max(0, p - 1))}
+                                                        disabled={activityPage === 0}
+                                                    >
+                                                        Previous
+                                                    </Button>
+                                                    <Text size="xs" c="dimmed">
+                                                        Page {activityPage + 1} of {totalPages}
+                                                    </Text>
+                                                    <Button
+                                                        size="xs"
+                                                        variant="subtle"
+                                                        onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
+                                                        disabled={activityPage === totalPages - 1}
+                                                    >
+                                                        Next
+                                                    </Button>
+                                                </Group>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </Paper>
+                        </Stack>
+                    </Grid.Col>
+                </Grid>
             </Stack >
 
             {/* Send Money Modal */}

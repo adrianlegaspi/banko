@@ -19,9 +19,10 @@ export default function PlayerSelector({
     selectedPlayerId,
     onSelect,
     includeBank = false,
+    showDefeated = false,
     room
-}: PlayerSelectorProps) {
-    const availablePlayers = players.filter(p => p.id !== currentPlayerId && p.status !== 'defeated');
+}: PlayerSelectorProps & { showDefeated?: boolean }) {
+    const availablePlayers = players.filter(p => p.id !== currentPlayerId && (showDefeated || p.status !== 'defeated'));
 
     return (
         <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
