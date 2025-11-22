@@ -3,6 +3,8 @@
 import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea } from '@mantine/core';
 import { IconSend, IconReceipt2, IconQrcode } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
@@ -24,7 +26,9 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [sendModalOpen, setSendModalOpen] = useState(false);
     const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [scanModalOpen, setScanModalOpen] = useState(false);
     const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+    const router = useRouter();
 
     const supabase = createClient();
 
@@ -169,17 +173,24 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 )}
 
                 {/* Action Buttons */}
-                <Group grow>
-                    <Button leftSection={<IconSend size={18} />} onClick={() => setSendModalOpen(true)}>
-                        Send Money
-                    </Button>
-                    <Button leftSection={<IconReceipt2 size={18} />} variant="light" onClick={() => setRequestModalOpen(true)}>
-                        Request
-                    </Button>
-                    <Button leftSection={<IconQrcode size={18} />} variant="outline" onClick={() => setQrModalOpen(true)}>
-                        QR Request
-                    </Button>
-                </Group>
+                <Stack gap="sm">
+                    <Group grow>
+                        <Button leftSection={<IconSend size={18} />} onClick={() => setSendModalOpen(true)}>
+                            Send
+                        </Button>
+                        <Button leftSection={<IconReceipt2 size={18} />} variant="light" onClick={() => setRequestModalOpen(true)}>
+                            Request
+                        </Button>
+                    </Group>
+                    <Group grow>
+                        <Button leftSection={<IconQrcode size={18} />} variant="outline" onClick={() => setQrModalOpen(true)}>
+                            QR Request
+                        </Button>
+                        <Button leftSection={<IconQrcode size={18} />} color="grape" onClick={() => setScanModalOpen(true)}>
+                            Scan
+                        </Button>
+                    </Group>
+                </Stack>
 
                 {/* Bank Panel (Operator Only) */}
                 {currentPlayer.is_bank_operator && (
@@ -194,25 +205,93 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                             <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent' }}>
                                 <Group gap="sm">
                                     <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                    <Text size="sm">{p.nickname}</Text>
-                                    {p.is_bank_operator && <Badge size="xs" color="yellow">Banker</Badge>}
-                                </Group>
-                                <Text fw={600} size="sm">${p.current_balance.toLocaleString()}</Text>
-                            </Group>
-                        ))}
-                    </Stack>
-                </Paper>
+                                    {(() => {
+                                        // Combine transactions and payment requests into unified activity feed
+                                        const allActivity = [
+                                            ...transactions.map((t: any) => ({
+                                                id: t.id,
+                                                type: 'transaction',
+                                                from: t.from_player?.nickname || 'Bank',
+                                                to: t.to_player?.nickname || 'Bank',
+                                                amount: t.amount,
+                                                description: t.description,
+                                                created_at: t.created_at
+                                            })),
+                                            ...paymentRequests
+                                                .filter((pr: any) => pr.status !== 'pending')
+                                                .map((pr: any) => ({
+                                                    id: pr.id,
+                                                    type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
+                                                    from: pr.from_player?.nickname || 'Unknown',
+                                                    to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
+                                                    amount: pr.amount,
+                                                    description: pr.description,
+                                                    created_at: pr.updated_at || pr.created_at
+                                                }))
+                                        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-                {/* Recent Transactions */}
-                <Paper p="md" radius="md" withBorder>
-                    <Text fw={600} mb="sm">Recent Activity</Text>
-                    <Stack gap="xs">
-                        {transactions.slice(0, 10).map((t: any) => (
-                            <Group key={t.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
-                                <Text size="xs" c="dimmed">
-                                    {t.from_player?.nickname || 'Bank'} → {t.to_player?.nickname || 'Bank'}
-                                </Text>
-                                <Text size="xs" fw={600}>${t.amount}</Text>
+                                        const [activityPage, setActivityPage] = useState(0);
+                                        const itemsPerPage = 8;
+                                        const totalPages = Math.ceil(allActivity.length / itemsPerPage);
+                                        const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
+
+                                        return (
+                                            <>
+                                                <Stack gap="xs">
+                                                    {paginatedActivity.length === 0 ? (
+                                                        <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
+                                                    ) : (
+                                                        paginatedActivity.map((activity: any) => (
+                                                            <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
+                                                                <div>
+                                                                    <Text size="xs" c="dimmed">
+                                                                        {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
+                                                                        {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
+                                                                        {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                                    </Text>
+                                                                    {activity.description && (
+                                                                        <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
+                                                                    )}
+                                                                </div>
+                                                                <Text
+                                                                    size="xs"
+                                                                    fw={600}
+                                                                    c={activity.type === 'request_rejected' ? 'red' : undefined}
+                                                                    style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
+                                                                >
+                                                                    ${activity.amount}
+                                                                </Text>
+                                                            </Group>
+                                                        ))
+                                                    )}
+                                                </Stack>
+                                                {totalPages > 1 && (
+                                                    <Group justify="center" mt="sm" gap="xs">
+                                                        <Button
+                                                            size="xs"
+                                                            variant="subtle"
+                                                            onClick={() => setActivityPage(p => Math.max(0, p - 1))}
+                                                            disabled={activityPage === 0}
+                                                        >
+                                                            Previous
+                                                        </Button>
+                                                        <Text size="xs" c="dimmed">
+                                                            Page {activityPage + 1} of {totalPages}
+                                                        </Text>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="subtle"
+                                                            onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
+                                                            disabled={activityPage === totalPages - 1}
+                                                        >
+                                                            Next
+                                                        </Button>
+                                                    </Group>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </Group>
                             </Group>
                         ))}
                     </Stack>
@@ -239,14 +318,87 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 />
             </Modal>
 
-            {/* QR Modal */}
+            {/* QR Request Modal */}
             <Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request">
                 <QRRequestForm
                     roomCode={room.room_code}
                     currentPlayerId={currentPlayer.id}
                 />
             </Modal>
-        </Container>
+
+            {/* Scan Modal */}
+            <Modal opened={scanModalOpen} onClose={() => setScanModalOpen(false)} title="Scan QR Code">
+                <ScanQRForm onClose={() => setScanModalOpen(false)} />
+            </Modal>
+        </Container >
+    );
+}
+
+function ScanQRForm({ onClose }: { onClose: () => void }) {
+    const router = useRouter();
+    const [error, setError] = useState<string | null>(null);
+    const [scanning, setScanning] = useState(false);
+
+    useEffect(() => {
+        const html5QrCode = new Html5Qrcode("reader");
+
+        const startScanning = async () => {
+            try {
+                setScanning(true);
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    {
+                        fps: 10,
+                        qrbox: { width: 250, height: 250 }
+                    },
+                    (decodedText) => {
+                        // Handle success
+                        console.log(`Scan result: ${decodedText}`);
+                        html5QrCode.stop().then(() => {
+                            onClose();
+                            // Check if it's a valid URL for our app
+                            try {
+                                const url = new URL(decodedText);
+                                if (url.pathname.includes('/pay')) {
+                                    router.push(url.pathname + url.search);
+                                } else {
+                                    alert('Invalid Banko QR Code');
+                                }
+                            } catch (e) {
+                                // If it's relative or just path
+                                if (decodedText.includes('/pay')) {
+                                    router.push(decodedText);
+                                }
+                            }
+                        });
+                    },
+                    (errorMessage) => {
+                        // parse error, ignore it.
+                    }
+                );
+            } catch (err) {
+                console.error("Error starting scanner", err);
+                setError("Could not access camera. Please ensure you have granted permission.");
+                setScanning(false);
+            }
+        };
+
+        startScanning();
+
+        return () => {
+            if (html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
+            }
+        };
+    }, [onClose, router]);
+
+    return (
+        <Stack align="center">
+            <div id="reader" style={{ width: '100%', minHeight: '300px' }}></div>
+            {!scanning && !error && <Text size="sm">Requesting camera access...</Text>}
+            {error && <Text c="red" size="sm">{error}</Text>}
+            <Text size="xs" c="dimmed">Point camera at a Banko QR code</Text>
+        </Stack>
     );
 }
 
