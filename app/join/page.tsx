@@ -24,6 +24,9 @@ export default function JoinRoom() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [roomCode, setRoomCode] = useState('');
+    const [takenColors, setTakenColors] = useState<string[]>([]);
+    const [availableColors, setAvailableColors] = useState(COLORS);
     const router = useRouter();
     const supabase = createClient();
 
@@ -43,6 +46,46 @@ export default function JoinRoom() {
         checkAuth();
     }, [supabase]);
 
+    // Fetch taken colors when room code changes
+    useEffect(() => {
+        const fetchTakenColors = async () => {
+            if (!roomCode || roomCode.length < 3) {
+                setTakenColors([]);
+                setAvailableColors(COLORS);
+                return;
+            }
+
+            try {
+                // Find room
+                const { data: room } = await supabase
+                    .from('rooms')
+                    .select('id')
+                    .eq('room_code', roomCode.toUpperCase())
+                    .single();
+
+                if (room) {
+                    // Get existing players
+                    const { data: players } = await supabase
+                        .from('players')
+                        .select('color')
+                        .eq('room_id', room.id);
+
+                    const taken = players?.map(p => p.color) || [];
+                    setTakenColors(taken);
+                    setAvailableColors(COLORS.filter(c => !taken.includes(c.value)));
+                } else {
+                    setTakenColors([]);
+                    setAvailableColors(COLORS);
+                }
+            } catch (err) {
+                console.error('Error fetching taken colors:', err);
+            }
+        };
+
+        const debounce = setTimeout(fetchTakenColors, 300);
+        return () => clearTimeout(debounce);
+    }, [roomCode, supabase]);
+
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setSubmitting(true);
@@ -50,7 +93,7 @@ export default function JoinRoom() {
 
         try {
             const formData = new FormData(e.currentTarget);
-            const roomCode = (formData.get('roomCode') as string).toUpperCase();
+            const code = (formData.get('roomCode') as string).toUpperCase();
             const nickname = formData.get('nickname') as string;
             const color = formData.get('color') as string;
 
@@ -62,7 +105,7 @@ export default function JoinRoom() {
             const { data: room, error: roomError } = await supabase
                 .from('rooms')
                 .select('*')
-                .eq('room_code', roomCode)
+                .eq('room_code', code)
                 .single();
 
             if (roomError || !room) throw new Error('Room not found');
@@ -77,11 +120,23 @@ export default function JoinRoom() {
                 .single();
 
             if (existingPlayer) {
-                router.push(`/room/${roomCode}/lobby`);
+                router.push(`/room/${code}/lobby`);
                 return;
             }
 
-            // 3. Create Player
+            // 3. Check if color is taken
+            const { data: colorCheck } = await supabase
+                .from('players')
+                .select('color')
+                .eq('room_id', room.id)
+                .eq('color', color)
+                .single();
+
+            if (colorCheck) {
+                throw new Error('This color is already taken. Please choose another.');
+            }
+
+            // 4. Create Player
             const { error: playerError } = await supabase
                 .from('players')
                 .insert({
@@ -96,7 +151,7 @@ export default function JoinRoom() {
             if (playerError) throw playerError;
 
             // Navigate to lobby
-            router.push(`/room/${roomCode}/lobby`);
+            router.push(`/room/${code}/lobby`);
         } catch (err: any) {
             console.error('Error joining room:', err);
             setError(err.message || 'Failed to join room');
@@ -130,6 +185,8 @@ export default function JoinRoom() {
                             required
                             styles={{ input: { textTransform: 'uppercase' } }}
                             disabled={submitting}
+                            value={roomCode}
+                            onChange={(e) => setRoomCode(e.currentTarget.value)}
                         />
 
                         <TextInput
@@ -143,11 +200,12 @@ export default function JoinRoom() {
                         <Select
                             name="color"
                             label="Your Color"
-                            data={COLORS}
-                            defaultValue="green"
+                            data={availableColors}
+                            defaultValue={availableColors.length > 0 ? availableColors[0].value : undefined}
                             required
                             allowDeselect={false}
-                            disabled={submitting}
+                            disabled={submitting || availableColors.length === 0}
+                            description={takenColors.length > 0 ? `Taken: ${takenColors.map(c => COLORS.find(col => col.value === c)?.label).join(', ')}` : undefined}
                         />
 
                         {error && <div style={{ color: 'red' }}>{error}</div>}

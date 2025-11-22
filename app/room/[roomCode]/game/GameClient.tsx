@@ -28,6 +28,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const [scanModalOpen, setScanModalOpen] = useState(false);
     const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
+    const [activityPage, setActivityPage] = useState(0);
     const router = useRouter();
 
     const supabase = createClient();
@@ -241,28 +242,51 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                     {paginatedActivity.length === 0 ? (
                                                         <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
                                                     ) : (
-                                                        paginatedActivity.map((activity: any) => (
-                                                            <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
-                                                                <div>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
-                                                                        {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
-                                                                        {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                        paginatedActivity.map((activity: any) => {
+                                                            const timestamp = new Date(activity.created_at);
+                                                            const now = new Date();
+                                                            const diffMs = now.getTime() - timestamp.getTime();
+                                                            const diffMins = Math.floor(diffMs / 60000);
+                                                            const diffHours = Math.floor(diffMins / 60);
+                                                            const diffDays = Math.floor(diffHours / 24);
+
+                                                            let timeAgo = '';
+                                                            if (diffDays > 0) {
+                                                                timeAgo = `${diffDays}d ago`;
+                                                            } else if (diffHours > 0) {
+                                                                timeAgo = `${diffHours}h ago`;
+                                                            } else if (diffMins > 0) {
+                                                                timeAgo = `${diffMins}m ago`;
+                                                            } else {
+                                                                timeAgo = 'Just now';
+                                                            }
+
+                                                            return (
+                                                                <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
+                                                                    <div style={{ flex: 1 }}>
+                                                                        <Text size="xs" c="dimmed">
+                                                                            {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
+                                                                            {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
+                                                                            {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                                        </Text>
+                                                                        {activity.description && (
+                                                                            <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
+                                                                        )}
+                                                                        <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
+                                                                            {timeAgo}
+                                                                        </Text>
+                                                                    </div>
+                                                                    <Text
+                                                                        size="xs"
+                                                                        fw={600}
+                                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
+                                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
+                                                                    >
+                                                                        ${activity.amount}
                                                                     </Text>
-                                                                    {activity.description && (
-                                                                        <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
-                                                                    )}
-                                                                </div>
-                                                                <Text
-                                                                    size="xs"
-                                                                    fw={600}
-                                                                    c={activity.type === 'request_rejected' ? 'red' : undefined}
-                                                                    style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
-                                                                >
-                                                                    ${activity.amount}
-                                                                </Text>
-                                                            </Group>
-                                                        ))
+                                                                </Group>
+                                                            );
+                                                        })
                                                     )}
                                                 </Stack>
                                                 {totalPages > 1 && (
