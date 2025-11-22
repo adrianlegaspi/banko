@@ -1,10 +1,10 @@
 'use client'
 
-import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl, Tabs, ScrollArea, TextInput } from '@mantine/core';
-import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy, IconBuildingEstate, IconRefresh } from '@tabler/icons-react';
+import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl, Tabs, ScrollArea, TextInput, ActionIcon } from '@mantine/core';
+import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy, IconBuildingEstate, IconRefresh, IconHistory, IconArrowBack } from '@tabler/icons-react';
 import { useState, useEffect } from 'react';
 import type { Player, Room } from '@/app/actions';
-import { createTransaction, finishGame, updatePlayerStatus, createLoan, repayLoan, getLoans } from '@/app/actions';
+import { createTransaction, finishGame, updatePlayerStatus, createLoan, repayLoan, getLoans, getTransactions, revertTransaction } from '@/app/actions';
 import PlayerSelector from './PlayerSelector';
 
 type Props = {
@@ -17,6 +17,7 @@ export default function BankPanel({ room, players }: Props) {
     const [potModal, setPotModal] = useState(false);
     const [salaryModal, setSalaryModal] = useState(false);
     const [playerModal, setPlayerModal] = useState(false);
+    const [historyModal, setHistoryModal] = useState(false);
 
     const [loansModal, setLoansModal] = useState(false);
     const [endGameModal, setEndGameModal] = useState(false);
@@ -147,6 +148,26 @@ export default function BankPanel({ room, players }: Props) {
                             <Text size="xs" c="white" opacity={0.7}>Issue / Repay</Text>
                         </Stack>
                     </Paper>
+
+                    {/* Transaction History */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-indigo-9) 0%, var(--mantine-color-indigo-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setHistoryModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconHistory size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Transaction History</Text>
+                            <Text size="xs" c="white" opacity={0.7}>View / Revert</Text>
+                        </Stack>
+                    </Paper>
                 </SimpleGrid>
 
                 {/* End Game - Danger Zone */}
@@ -170,6 +191,7 @@ export default function BankPanel({ room, players }: Props) {
 
             <PlayerStatusModal opened={playerModal} onClose={() => setPlayerModal(false)} room={room} players={players} />
             <LoansModal opened={loansModal} onClose={() => setLoansModal(false)} room={room} players={players} />
+            <TransactionHistoryModal opened={historyModal} onClose={() => setHistoryModal(false)} room={room} players={players} />
 
             <Modal opened={endGameModal} onClose={() => setEndGameModal(false)} title="End Game Confirmation">
                 <Stack>
@@ -618,6 +640,127 @@ function LoansModal({ opened, onClose, room, players }: { opened: boolean; onClo
                     </Stack>
                 </Tabs.Panel>
             </Tabs>
+        </Modal>
+    );
+}
+
+function TransactionHistoryModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [reverting, setReverting] = useState<string | null>(null);
+
+    const fetchTransactions = async () => {
+        setLoading(true);
+        try {
+            const data = await getTransactions(room.id);
+            setTransactions(data || []);
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        if (opened) {
+            fetchTransactions();
+        }
+    }, [opened]);
+
+    const handleRevert = async (transactionId: string) => {
+        if (!confirm('Are you sure you want to revert this transaction? This will create a new reversing transaction.')) return;
+
+        setReverting(transactionId);
+        try {
+            await revertTransaction(transactionId, room.room_code);
+            await fetchTransactions();
+        } catch (error) {
+            console.error(error);
+            alert('Failed to revert transaction');
+        }
+        setReverting(null);
+    };
+
+    const getPlayerName = (playerId: string | null) => {
+        if (!playerId) return room.bank_display_name;
+        const player = players.find(p => p.id === playerId);
+        return player?.nickname || 'Unknown';
+    };
+
+    const formatTransactionType = (type: string) => {
+        switch (type) {
+            case 'bank_to_player': return 'Bank → Player';
+            case 'player_to_bank': return 'Player → Bank';
+            case 'player_to_player': return 'Player → Player';
+            case 'pot_in': return 'To Pot';
+            case 'pot_out': return 'From Pot';
+            case 'reversal': return '⚠️ REVERSAL';
+            default: return type;
+        }
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title="Transaction History" size="xl">
+            <Stack gap="md">
+                <Group justify="space-between">
+                    <Text size="sm" c="dimmed">All room transactions</Text>
+                    <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchTransactions} loading={loading}>
+                        Refresh
+                    </Button>
+                </Group>
+
+                {loading && transactions.length === 0 ? (
+                    <Text c="dimmed" ta="center" py="xl">Loading transactions...</Text>
+                ) : transactions.length === 0 ? (
+                    <Text c="dimmed" ta="center" py="xl">No transactions yet</Text>
+                ) : (
+                    <ScrollArea h={400}>
+                        <Stack gap="sm">
+                            {transactions.map((transaction: any) => (
+                                <Paper key={transaction.id} p="sm" withBorder style={{
+                                    borderColor: transaction.type === 'reversal' ? 'var(--mantine-color-yellow-6)' : undefined,
+                                    backgroundColor: transaction.type === 'reversal' ? 'var(--mantine-color-yellow-9)' : undefined
+                                }}>
+                                    <Group justify="space-between" align="flex-start">
+                                        <Stack gap="xs" style={{ flex: 1 }}>
+                                            <Group gap="xs">
+                                                <Badge size="sm" variant="light" color={
+                                                    transaction.type === 'reversal' ? 'yellow' :
+                                                        transaction.type.includes('bank') ? 'blue' :
+                                                            transaction.type.includes('pot') ? 'grape' : 'cyan'
+                                                }>
+                                                    {formatTransactionType(transaction.type)}
+                                                </Badge>
+                                                <Text size="sm" fw={500}>
+                                                    {getPlayerName(transaction.from_player_id)} → {getPlayerName(transaction.to_player_id)}
+                                                </Text>
+                                            </Group>
+                                            <Text size="sm" c="dimmed">{transaction.description}</Text>
+                                            <Text size="xs" c="dimmed">{new Date(transaction.created_at).toLocaleString()}</Text>
+                                        </Stack>
+                                        <Group gap="sm">
+                                            <Text fw={700} size="lg" c={transaction.type === 'reversal' ? 'yellow' : undefined}>
+                                                ${transaction.amount}
+                                            </Text>
+                                            {transaction.type !== 'reversal' && !transaction.metadata?.is_reversal && (
+                                                <ActionIcon
+                                                    color="red"
+                                                    variant="light"
+                                                    size="sm"
+                                                    onClick={() => handleRevert(transaction.id)}
+                                                    loading={reverting === transaction.id}
+                                                    title="Revert Transaction"
+                                                >
+                                                    <IconArrowBack size={16} />
+                                                </ActionIcon>
+                                            )}
+                                        </Group>
+                                    </Group>
+                                </Paper>
+                            ))}
+                        </Stack>
+                    </ScrollArea>
+                )}
+            </Stack>
         </Modal>
     );
 }
