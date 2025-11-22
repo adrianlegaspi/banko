@@ -357,13 +357,17 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
 
             {/* Scan Modal */}
             <Modal opened={scanModalOpen} onClose={() => setScanModalOpen(false)} title="Scan QR Code">
-                <ScanQRForm onClose={() => setScanModalOpen(false)} />
+                <ScanQRForm
+                    onClose={() => setScanModalOpen(false)}
+                    roomId={room.id}
+                    currentPlayerId={currentPlayer.id}
+                />
             </Modal>
         </Container >
     );
 }
 
-function ScanQRForm({ onClose }: { onClose: () => void }) {
+function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void, roomId: string, currentPlayerId: string }) {
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
     const [cameras, setCameras] = useState<any[]>([]);
@@ -411,8 +415,8 @@ function ScanQRForm({ onClose }: { onClose: () => void }) {
                 if (devices && devices.length > 0) {
                     setScanning(true);
 
-                    // Use the back camera if available, otherwise use the first camera
-                    const cameraId = devices.length > 1 ? devices[1].id : devices[0].id;
+                    // Use the first camera (usually back/environment camera)
+                    const cameraId = devices[0].id;
 
                     await html5QrCode.start(
                         cameraId,
@@ -420,26 +424,43 @@ function ScanQRForm({ onClose }: { onClose: () => void }) {
                             fps: 10,
                             qrbox: { width: 250, height: 250 }
                         },
-                        (decodedText) => {
+                        async (decodedText) => {
                             console.log(`Scan result: ${decodedText}`);
-                            html5QrCode?.stop().then(() => {
-                                onClose();
-                                // Navigate to payment page
-                                try {
-                                    const url = new URL(decodedText);
-                                    if (url.pathname.includes('/pay')) {
-                                        router.push(url.pathname + url.search);
-                                    } else {
-                                        alert('Invalid Banko QR Code');
+
+                            // Stop scanning first
+                            await html5QrCode?.stop();
+                            onClose();
+
+                            // Parse the QR code data
+                            try {
+                                const url = new URL(decodedText);
+                                const searchParams = new URLSearchParams(url.search);
+                                const toPlayerId = searchParams.get('to');
+                                const amount = searchParams.get('amount');
+
+                                if (url.pathname.includes('/pay') && toPlayerId && amount) {
+                                    // Process payment directly without navigation
+                                    try {
+                                        await createTransaction(
+                                            roomId,
+                                            'player_to_player',
+                                            Number(amount),
+                                            'QR Payment',
+                                            currentPlayerId,
+                                            toPlayerId
+                                        );
+                                        alert(`Successfully paid $${amount}!`);
+                                    } catch (error) {
+                                        console.error('Payment failed:', error);
+                                        alert('Payment failed. Please try again.');
                                     }
-                                } catch (e) {
-                                    if (decodedText.includes('/pay')) {
-                                        router.push(decodedText);
-                                    } else {
-                                        alert('Invalid QR Code format');
-                                    }
+                                } else {
+                                    alert('Invalid Banko QR Code');
                                 }
-                            });
+                            } catch (e) {
+                                console.error('Failed to parse QR code:', e);
+                                alert('Invalid QR Code format');
+                            }
                         },
                         (errorMessage) => {
                             // Ignore scanning errors (happens continuously while scanning)
@@ -470,7 +491,7 @@ function ScanQRForm({ onClose }: { onClose: () => void }) {
                 html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
             }
         };
-    }, [onClose, router]);
+    }, [onClose, router, roomId, currentPlayerId]);
 
     return (
         <Stack align="center" gap="md">
