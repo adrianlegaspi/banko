@@ -337,48 +337,99 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
 function ScanQRForm({ onClose }: { onClose: () => void }) {
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
+    const [cameras, setCameras] = useState<any[]>([]);
     const [scanning, setScanning] = useState(false);
 
     useEffect(() => {
-        const html5QrCode = new Html5Qrcode("reader");
+        let html5QrCode: Html5Qrcode | null = null;
+
+        const checkCameraSupport = async () => {
+            // Check if we're on HTTPS or localhost
+            const isSecure = window.location.protocol === 'https:' ||
+                window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1';
+
+            if (!isSecure) {
+                setError("Camera access requires HTTPS. Please use localhost or access via HTTPS.");
+                return false;
+            }
+
+            // Check if MediaDevices API is supported
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                setError("Camera access is not supported by your browser.");
+                return false;
+            }
+
+            return true;
+        };
 
         const startScanning = async () => {
+            const isSupported = await checkCameraSupport();
+            if (!isSupported) {
+                return;
+            }
+
             try {
-                setScanning(true);
-                await html5QrCode.start(
-                    { facingMode: "environment" },
-                    {
-                        fps: 10,
-                        qrbox: { width: 250, height: 250 }
-                    },
-                    (decodedText) => {
-                        // Handle success
-                        console.log(`Scan result: ${decodedText}`);
-                        html5QrCode.stop().then(() => {
-                            onClose();
-                            // Check if it's a valid URL for our app
-                            try {
-                                const url = new URL(decodedText);
-                                if (url.pathname.includes('/pay')) {
-                                    router.push(url.pathname + url.search);
-                                } else {
-                                    alert('Invalid Banko QR Code');
+                // Request camera permission explicitly
+                await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+
+                html5QrCode = new Html5Qrcode("reader");
+
+                // Get available cameras
+                const devices = await Html5Qrcode.getCameras();
+                setCameras(devices);
+
+                if (devices && devices.length > 0) {
+                    setScanning(true);
+
+                    // Use the back camera if available, otherwise use the first camera
+                    const cameraId = devices.length > 1 ? devices[1].id : devices[0].id;
+
+                    await html5QrCode.start(
+                        cameraId,
+                        {
+                            fps: 10,
+                            qrbox: { width: 250, height: 250 }
+                        },
+                        (decodedText) => {
+                            console.log(`Scan result: ${decodedText}`);
+                            html5QrCode?.stop().then(() => {
+                                onClose();
+                                // Navigate to payment page
+                                try {
+                                    const url = new URL(decodedText);
+                                    if (url.pathname.includes('/pay')) {
+                                        router.push(url.pathname + url.search);
+                                    } else {
+                                        alert('Invalid Banko QR Code');
+                                    }
+                                } catch (e) {
+                                    if (decodedText.includes('/pay')) {
+                                        router.push(decodedText);
+                                    } else {
+                                        alert('Invalid QR Code format');
+                                    }
                                 }
-                            } catch (e) {
-                                // If it's relative or just path
-                                if (decodedText.includes('/pay')) {
-                                    router.push(decodedText);
-                                }
-                            }
-                        });
-                    },
-                    (errorMessage) => {
-                        // parse error, ignore it.
-                    }
-                );
-            } catch (err) {
+                            });
+                        },
+                        (errorMessage) => {
+                            // Ignore scanning errors (happens continuously while scanning)
+                        }
+                    );
+                } else {
+                    setError("No cameras found on this device.");
+                }
+            } catch (err: any) {
                 console.error("Error starting scanner", err);
-                setError("Could not access camera. Please ensure you have granted permission.");
+                if (err.name === 'NotAllowedError') {
+                    setError("Camera permission denied. Please allow camera access and try again.");
+                } else if (err.name === 'NotFoundError') {
+                    setError("No camera found on this device.");
+                } else if (err.message?.includes('streaming not supported')) {
+                    setError("Camera streaming not supported. Please use HTTPS or localhost.");
+                } else {
+                    setError(`Camera error: ${err.message || 'Could not access camera'}`);
+                }
                 setScanning(false);
             }
         };
@@ -386,18 +437,27 @@ function ScanQRForm({ onClose }: { onClose: () => void }) {
         startScanning();
 
         return () => {
-            if (html5QrCode.isScanning) {
+            if (html5QrCode?.isScanning) {
                 html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
             }
         };
     }, [onClose, router]);
 
     return (
-        <Stack align="center">
+        <Stack align="center" gap="md">
             <div id="reader" style={{ width: '100%', minHeight: '300px' }}></div>
-            {!scanning && !error && <Text size="sm">Requesting camera access...</Text>}
-            {error && <Text c="red" size="sm">{error}</Text>}
-            <Text size="xs" c="dimmed">Point camera at a Banko QR code</Text>
+            {!scanning && !error && <Text size="sm">Initializing camera...</Text>}
+            {error && (
+                <Stack gap="xs" align="center">
+                    <Text c="red" size="sm" ta="center">{error}</Text>
+                    {error.includes('HTTPS') && (
+                        <Text size="xs" c="dimmed" ta="center">
+                            Access the app via localhost:3000 or use HTTPS to enable camera
+                        </Text>
+                    )}
+                </Stack>
+            )}
+            {scanning && <Text size="xs" c="dimmed">Point camera at a Banko QR code</Text>}
         </Stack>
     );
 }
