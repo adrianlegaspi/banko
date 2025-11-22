@@ -2,6 +2,7 @@
 
 import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl, Tabs, ScrollArea, TextInput, ActionIcon } from '@mantine/core';
 import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy, IconBuildingEstate, IconRefresh, IconHistory, IconArrowBack } from '@tabler/icons-react';
+import { Virtuoso } from 'react-virtuoso';
 import { useState, useEffect } from 'react';
 import type { Player, Room } from '@/app/actions';
 import { createTransaction, finishGame, updatePlayerStatus, createLoan, repayLoan, getLoans, getTransactions, revertTransaction } from '@/app/actions';
@@ -698,6 +699,59 @@ function TransactionHistoryModal({ opened, onClose, room, players }: { opened: b
         }
     };
 
+    // Virtualized row renderer
+    const Row = ({ index }: { index: number }) => {
+        const transaction = transactions[index];
+        if (!transaction) return null;
+
+        return (
+            <div>
+                <Paper p="sm" withBorder style={{
+                    borderColor: transaction.type === 'reversal' ? 'var(--mantine-color-orange-6)' : 'var(--mantine-color-dark-4)',
+                    backgroundColor: transaction.type === 'reversal' ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)'
+                }}>
+                    <Group justify="space-between" align="flex-start">
+                        <Stack gap="xs" style={{ flex: 1 }}>
+                            <Group gap="xs">
+                                <Badge size="sm" variant="filled" color={
+                                    transaction.type === 'reversal' ? 'orange' :
+                                        transaction.type.includes('bank') ? 'blue' :
+                                            transaction.type.includes('pot') ? 'grape' : 'cyan'
+                                }>
+                                    {formatTransactionType(transaction.type)}
+                                </Badge>
+                                <Text size="sm" fw={500} c={transaction.type === 'reversal' ? 'orange.3' : 'white'}>
+                                    {getPlayerName(transaction.from_player_id)} → {getPlayerName(transaction.to_player_id)}
+                                </Text>
+                            </Group>
+                            <Text size="sm" c={transaction.type === 'reversal' ? 'orange.4' : 'gray.4'}>
+                                {transaction.description}
+                            </Text>
+                            <Text size="xs" c="dimmed">{new Date(transaction.created_at).toLocaleString()}</Text>
+                        </Stack>
+                        <Group gap="sm">
+                            <Text fw={700} size="lg" c={transaction.type === 'reversal' ? 'orange.3' : 'white'}>
+                                ${transaction.amount}
+                            </Text>
+                            {transaction.type !== 'reversal' && !transaction.metadata?.is_reversal && (
+                                <ActionIcon
+                                    color="red"
+                                    variant="light"
+                                    size="sm"
+                                    onClick={() => handleRevert(transaction.id)}
+                                    loading={reverting === transaction.id}
+                                    title="Revert Transaction"
+                                >
+                                    <IconArrowBack size={16} />
+                                </ActionIcon>
+                            )}
+                        </Group>
+                    </Group>
+                </Paper>
+            </div>
+        );
+    };
+
     return (
         <Modal opened={opened} onClose={onClose} title="Transaction History" size="xl">
             <Stack gap="md">
@@ -713,52 +767,11 @@ function TransactionHistoryModal({ opened, onClose, room, players }: { opened: b
                 ) : transactions.length === 0 ? (
                     <Text c="dimmed" ta="center" py="xl">No transactions yet</Text>
                 ) : (
-                    <ScrollArea h={400}>
-                        <Stack gap="sm">
-                            {transactions.map((transaction: any) => (
-                                <Paper key={transaction.id} p="sm" withBorder style={{
-                                    borderColor: transaction.type === 'reversal' ? 'var(--mantine-color-yellow-6)' : undefined,
-                                    backgroundColor: transaction.type === 'reversal' ? 'var(--mantine-color-yellow-9)' : undefined
-                                }}>
-                                    <Group justify="space-between" align="flex-start">
-                                        <Stack gap="xs" style={{ flex: 1 }}>
-                                            <Group gap="xs">
-                                                <Badge size="sm" variant="light" color={
-                                                    transaction.type === 'reversal' ? 'yellow' :
-                                                        transaction.type.includes('bank') ? 'blue' :
-                                                            transaction.type.includes('pot') ? 'grape' : 'cyan'
-                                                }>
-                                                    {formatTransactionType(transaction.type)}
-                                                </Badge>
-                                                <Text size="sm" fw={500}>
-                                                    {getPlayerName(transaction.from_player_id)} → {getPlayerName(transaction.to_player_id)}
-                                                </Text>
-                                            </Group>
-                                            <Text size="sm" c="dimmed">{transaction.description}</Text>
-                                            <Text size="xs" c="dimmed">{new Date(transaction.created_at).toLocaleString()}</Text>
-                                        </Stack>
-                                        <Group gap="sm">
-                                            <Text fw={700} size="lg" c={transaction.type === 'reversal' ? 'yellow' : undefined}>
-                                                ${transaction.amount}
-                                            </Text>
-                                            {transaction.type !== 'reversal' && !transaction.metadata?.is_reversal && (
-                                                <ActionIcon
-                                                    color="red"
-                                                    variant="light"
-                                                    size="sm"
-                                                    onClick={() => handleRevert(transaction.id)}
-                                                    loading={reverting === transaction.id}
-                                                    title="Revert Transaction"
-                                                >
-                                                    <IconArrowBack size={16} />
-                                                </ActionIcon>
-                                            )}
-                                        </Group>
-                                    </Group>
-                                </Paper>
-                            ))}
-                        </Stack>
-                    </ScrollArea>
+                    <Virtuoso
+                        style={{ height: 400 }}
+                        totalCount={transactions.length}
+                        itemContent={(index) => <Row index={index} />}
+                    />
                 )}
             </Stack>
         </Modal>
