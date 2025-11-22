@@ -1,7 +1,7 @@
 'use client'
 
 import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon, Tabs, ScrollArea, TextInput, SegmentedControl } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin, IconHome, IconBuildingSkyscraper, IconVolume, IconVolumeOff } from '@tabler/icons-react';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin, IconHome, IconBuildingSkyscraper, IconVolume, IconVolumeOff, IconArrowsLeftRight, IconCheck, IconX } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
@@ -550,7 +550,8 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                             to: t.to_player?.nickname || 'Bank',
                                             amount: t.amount,
                                             description: t.description,
-                                            created_at: t.created_at
+                                            created_at: t.created_at,
+                                            tx_type: t.type
                                         })),
                                         ...paymentRequests
                                             .filter((pr: any) => pr.status !== 'pending')
@@ -602,38 +603,65 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                             timeAgo = 'Just now';
                                                         }
 
+                                                        // Visual accents per activity type
+                                                        const isReversal = typeof activity.description === 'string' && activity.description.toUpperCase().startsWith('REVERSAL');
+                                                        const txType = activity.tx_type as string | undefined;
+                                                        let accent: string | undefined;
+                                                        let amountColor: string | undefined;
+                                                        if (activity.type === 'transaction') {
+                                                            if (txType === 'player_to_bank') { accent = 'red'; amountColor = 'red'; }
+                                                            else if (txType === 'bank_to_player') { accent = 'green'; amountColor = 'green'; }
+                                                            else if (txType === 'pot_in' || txType === 'pot_out') { accent = 'grape'; }
+                                                            else { accent = 'blue'; }
+                                                        } else if (activity.type === 'request_rejected') { accent = 'red'; amountColor = 'red'; }
+                                                        else if (activity.type === 'request_accepted') { accent = 'grape'; }
+                                                        else if (activity.type === 'dice_roll') { accent = 'orange'; }
+
+                                                        const amountText = typeof activity.amount === 'number' ? `$${Number(activity.amount).toLocaleString()}` : activity.amount;
+
                                                         return (
-                                                            <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
-                                                                <div style={{ flex: 1 }}>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
-                                                                        {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
-                                                                        {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
-                                                                        {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
-                                                                    </Text>
-                                                                    {activity.description && (
-                                                                        <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
+                                                            <Paper
+                                                                key={activity.id}
+                                                                p="xs"
+                                                                radius="md"
+                                                                withBorder
+                                                                style={{
+                                                                    fontSize: '0.9rem',
+                                                                    borderColor: isReversal ? 'var(--mantine-color-orange-7)' : accent ? `var(--mantine-color-${accent}-7)` : 'var(--mantine-color-dark-4)',
+                                                                    background: isReversal ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)'
+                                                                }}
+                                                            >
+                                                                <Group justify="space-between" align="flex-start">
+                                                                    <Stack gap={2} style={{ flex: 1 }}>
+                                                                        <Group gap="xs" align="center">
+                                                                            {activity.type === 'transaction' && <IconArrowsLeftRight size={14} color={`var(--mantine-color-${accent || 'gray'}-4)`} />}
+                                                                            {activity.type === 'request_accepted' && <IconCheck size={14} color={`var(--mantine-color-${accent || 'grape'}-4)`} />}
+                                                                            {activity.type === 'request_rejected' && <IconX size={14} color={`var(--mantine-color-${accent || 'red'}-4)`} />}
+                                                                            <Text size="sm" c="gray.2">
+                                                                                {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
+                                                                                {activity.type === 'request_accepted' && `${activity.from} → ${activity.to}`}
+                                                                                {activity.type === 'request_rejected' && `${activity.from} ⇢ ${activity.to}`}
+                                                                                {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
+                                                                            </Text>
+                                                                        </Group>
+                                                                        {activity.description && (
+                                                                            <Text size="xs" c={isReversal ? 'orange.4' : 'gray.4'}>{activity.description}</Text>
+                                                                        )}
+                                                                        <Text size="xs" c="dimmed" style={{ fontSize: '0.7rem' }}>
+                                                                            {timeAgo}
+                                                                        </Text>
+                                                                    </Stack>
+                                                                    {activity.type !== 'dice_roll' ? (
+                                                                        <Text size="sm" fw={700} c={amountColor}>
+                                                                            {amountText}
+                                                                        </Text>
+                                                                    ) : (
+                                                                        <Badge size="lg" variant="light" color="orange">
+                                                                            {activity.payload.roll}
+                                                                        </Badge>
                                                                     )}
-                                                                    <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
-                                                                        {timeAgo}
-                                                                    </Text>
-                                                                </div>
-                                                                {activity.type !== 'dice_roll' && (
-                                                                    <Text
-                                                                        size="xs"
-                                                                        fw={600}
-                                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
-                                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
-                                                                    >
-                                                                        ${activity.amount}
-                                                                    </Text>
-                                                                )}
-                                                                {activity.type === 'dice_roll' && (
-                                                                    <Badge size="lg" variant="light" color="orange">
-                                                                        {activity.payload.roll}
-                                                                    </Badge>
-                                                                )}
-                                                            </Group>
+                                                                </Group>
+                                                            </Paper>
                                                         );
                                                     })
                                                 )}
