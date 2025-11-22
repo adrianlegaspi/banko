@@ -1,7 +1,7 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh } from '@tabler/icons-react';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid } from '@mantine/core';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
@@ -207,6 +207,25 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     <Badge size="lg" color="green">In Progress</Badge>
                 </Group>
 
+                {/* Shared Pot Display */}
+                <Paper
+                    p="md"
+                    radius="md"
+                    withBorder
+                    style={{
+                        background: 'linear-gradient(135deg, var(--mantine-color-yellow-9) 0%, var(--mantine-color-orange-9) 100%)',
+                        borderColor: 'var(--mantine-color-yellow-6)'
+                    }}
+                >
+                    <Group justify="space-between">
+                        <Group gap="xs">
+                            <IconTrophy size={24} color="white" />
+                            <Text fw={700} c="white">Shared Pot</Text>
+                        </Group>
+                        <Text fw={800} size="xl" c="white">${room.shared_pot_balance || 0}</Text>
+                    </Group>
+                </Paper>
+
                 {/* Balance Card */}
                 <Paper
                     p="xl"
@@ -290,46 +309,105 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 }
 
                 {/* Action Buttons */}
-                {
-                    !isDefeated && (
-                        <Stack gap="sm">
-                            <Group grow>
-                                <Button leftSection={<IconSend size={18} />} onClick={() => { initAudioContext(); setSendModalOpen(true); }}>
-                                    Send
-                                </Button>
-                                <Button leftSection={<IconReceipt2 size={18} />} variant="light" onClick={() => { initAudioContext(); setRequestModalOpen(true); }}>
-                                    Request
-                                </Button>
-                            </Group>
-                            <Group grow>
-                                <Button leftSection={<IconQrcode size={18} />} variant="outline" onClick={() => { initAudioContext(); setQrModalOpen(true); }}>
-                                    QR Request
-                                </Button>
-                                <Button leftSection={<IconQrcode size={18} />} color="grape" onClick={() => { initAudioContext(); setScanModalOpen(true); }}>
-                                    Scan
-                                </Button>
-                            </Group>
-                            <Button
-                                leftSection={<IconSquare size={18} />}
-                                color="orange"
-                                variant="light"
-                                onClick={async () => {
-                                    initAudioContext();
-                                    setRolling(true);
-                                    try {
-                                        await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
-                                    } catch (e) {
-                                        console.error(e);
-                                    }
-                                    setRolling(false);
+                {!isDefeated && (
+                    <Stack gap="sm">
+                        <SimpleGrid cols={2} spacing="sm">
+                            <Paper
+                                p="md"
+                                radius="md"
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--mantine-color-blue-6) 0%, var(--mantine-color-indigo-6) 100%)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s ease'
                                 }}
-                                loading={rolling}
+                                onClick={() => { initAudioContext(); setSendModalOpen(true); }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                             >
-                                Roll Dice (d{room.dice_sides || 12})
-                            </Button>
-                        </Stack>
-                    )
-                }
+                                <Stack align="center" gap="xs">
+                                    <IconSend size={32} color="white" />
+                                    <Text fw={600} c="white">Send</Text>
+                                </Stack>
+                            </Paper>
+
+                            <Paper
+                                p="md"
+                                radius="md"
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--mantine-color-grape-6) 0%, var(--mantine-color-pink-6) 100%)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s ease'
+                                }}
+                                onClick={() => { initAudioContext(); setRequestModalOpen(true); }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                                <Stack align="center" gap="xs">
+                                    <IconReceipt2 size={32} color="white" />
+                                    <Text fw={600} c="white">Request</Text>
+                                </Stack>
+                            </Paper>
+
+                            <Paper
+                                p="md"
+                                radius="md"
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--mantine-color-cyan-6) 0%, var(--mantine-color-teal-6) 100%)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s ease'
+                                }}
+                                onClick={() => { initAudioContext(); setQrModalOpen(true); }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                                <Stack align="center" gap="xs">
+                                    <IconQrcode size={32} color="white" />
+                                    <Text fw={600} c="white">QR Code</Text>
+                                </Stack>
+                            </Paper>
+
+                            <Paper
+                                p="md"
+                                radius="md"
+                                style={{
+                                    background: 'linear-gradient(135deg, var(--mantine-color-violet-6) 0%, var(--mantine-color-grape-6) 100%)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s ease'
+                                }}
+                                onClick={() => { initAudioContext(); setScanModalOpen(true); }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            >
+                                <Stack align="center" gap="xs">
+                                    <IconQrcode size={32} color="white" />
+                                    <Text fw={600} c="white">Scan</Text>
+                                </Stack>
+                            </Paper>
+                        </SimpleGrid>
+
+                        <Button
+                            fullWidth
+                            size="lg"
+                            color="orange"
+                            variant="light"
+                            leftSection={<IconSquare size={24} />}
+                            onClick={async () => {
+                                initAudioContext();
+                                setRolling(true);
+                                try {
+                                    await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
+                                } catch (e) {
+                                    console.error(e);
+                                }
+                                setRolling(false);
+                            }}
+                            loading={rolling}
+                            style={{ height: '60px', fontSize: '1.1rem' }}
+                        >
+                            Roll Dice (d{room.dice_sides || 12})
+                        </Button>
+                    </Stack>
+                )}
 
                 {
                     isDefeated && (
@@ -850,7 +928,7 @@ function RequestMoneyForm({ roomId, players, currentPlayerId, onClose, modalOpen
 }
 
 function QRRequestForm({ roomCode, currentPlayerId }: { roomCode: string, currentPlayerId: string }) {
-    const [amount, setAmount] = useState<number | string>('');
+    const [amount, setAmount] = useState<number | string | null>(null);
     const [qrUrl, setQrUrl] = useState('');
 
     useEffect(() => {
@@ -868,7 +946,7 @@ function QRRequestForm({ roomCode, currentPlayerId }: { roomCode: string, curren
             <NumberInput
                 label="Amount to Request"
                 placeholder="0"
-                value={amount}
+                value={amount === null ? '' : amount}
                 onChange={setAmount}
                 min={0}
                 w="100%"

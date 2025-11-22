@@ -1,7 +1,7 @@
 'use client'
 
-import { Paper, Title, Stack, Group, Button, NumberInput, Select, Modal, Text } from '@mantine/core';
-import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag } from '@tabler/icons-react';
+import { Paper, Title, Stack, Group, Button, NumberInput, Select, Modal, Text, Badge, SimpleGrid } from '@mantine/core';
+import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { Player, Room } from '@/app/actions';
 import { createTransaction, finishGame, updatePlayerStatus } from '@/app/actions';
@@ -15,44 +15,136 @@ export default function BankPanel({ room, players }: Props) {
     const [bankModal, setBankModal] = useState(false);
     const [potModal, setPotModal] = useState(false);
     const [salaryModal, setSalaryModal] = useState(false);
+    const [playerModal, setPlayerModal] = useState(false);
     const [endGameModal, setEndGameModal] = useState(false);
 
     return (
-        <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-yellow-6)' }}>
-            <Group justify="space-between" mb="md">
-                <Title order={4}>🏦 {room.bank_display_name}</Title>
-                <Text size="sm" fw={600}>Pot: ${room.shared_pot_balance || 0}</Text>
-            </Group>
-
-            <Stack gap="xs">
-                <Group grow>
-                    <Button size="xs" leftSection={<IconCoin size={16} />} onClick={() => setSalaryModal(true)}>
-                        Pay Salary (${room.salary_amount})
-                    </Button>
-                    <Button size="xs" variant="light" leftSection={<IconBuildingBank size={16} />} onClick={() => setBankModal(true)}>
-                        Bank Ops
-                    </Button>
+        <Paper p="xl" radius="lg" withBorder style={{
+            borderColor: 'var(--mantine-color-yellow-6)',
+            background: 'linear-gradient(135deg, var(--mantine-color-dark-7) 0%, var(--mantine-color-dark-8) 100%)'
+        }}>
+            <Stack gap="md">
+                {/* Header */}
+                <Group justify="space-between" mb="xs">
+                    <Group gap="sm">
+                        <IconBuildingBank size={28} style={{ color: 'var(--mantine-color-yellow-6)' }} />
+                        <Title order={3} style={{ color: 'var(--mantine-color-yellow-6)' }}>
+                            {room.bank_display_name}
+                        </Title>
+                    </Group>
+                    <Paper p="md" radius="md" style={{
+                        background: 'linear-gradient(135deg, var(--mantine-color-grape-9) 0%, var(--mantine-color-grape-7) 100%)',
+                        minWidth: '140px'
+                    }}>
+                        <Stack gap={0} align="center">
+                            <Text size="xs" c="white" opacity={0.7}>Shared Pot</Text>
+                            <Text size="xl" fw={700} c="white">${room.shared_pot_balance || 0}</Text>
+                        </Stack>
+                    </Paper>
                 </Group>
 
-                <Button size="xs" variant="outline" onClick={() => setPotModal(true)}>
-                    Pot Operations
-                </Button>
+                {/* Main Actions Grid */}
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                    {/* Pay Salary */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-blue-9) 0%, var(--mantine-color-blue-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setSalaryModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconCoin size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Pay Salary</Text>
+                            <Text size="xs" c="white" opacity={0.7}>${room.salary_amount}</Text>
+                        </Stack>
+                    </Paper>
 
-                <Button
-                    size="xs"
-                    color="red"
-                    variant="subtle"
-                    leftSection={<IconFlag size={16} />}
-                    onClick={() => setEndGameModal(true)}
-                    mt="sm"
-                >
-                    End Game
-                </Button>
+                    {/* Bank Transfers */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-cyan-9) 0%, var(--mantine-color-cyan-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setBankModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconArrowRight size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Bank Transfers</Text>
+                            <Text size="xs" c="white" opacity={0.7}>Give / Collect</Text>
+                        </Stack>
+                    </Paper>
+
+                    {/* Pot Operations */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-grape-9) 0%, var(--mantine-color-grape-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setPotModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconTrophy size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Pot Operations</Text>
+                            <Text size="xs" c="white" opacity={0.7}>Manage Pot</Text>
+                        </Stack>
+                    </Paper>
+
+                    {/* Player Status */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-orange-9) 0%, var(--mantine-color-orange-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setPlayerModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconUsers size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Player Status</Text>
+                            <Text size="xs" c="white" opacity={0.7}>Active / Defeated</Text>
+                        </Stack>
+                    </Paper>
+                </SimpleGrid>
+
+                {/* End Game - Danger Zone */}
+                <Paper p="sm" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-8)', backgroundColor: 'var(--mantine-color-red-9)' }}>
+                    <Button
+                        fullWidth
+                        size="sm"
+                        color="red"
+                        variant="subtle"
+                        leftSection={<IconFlag size={16} />}
+                        onClick={() => setEndGameModal(true)}
+                    >
+                        End Game
+                    </Button>
+                </Paper>
             </Stack>
 
             <BankModal opened={bankModal} onClose={() => setBankModal(false)} room={room} players={players} />
             <PotModal opened={potModal} onClose={() => setPotModal(false)} room={room} players={players} />
             <SalaryModal opened={salaryModal} onClose={() => setSalaryModal(false)} room={room} players={players} />
+            <PlayerStatusModal opened={playerModal} onClose={() => setPlayerModal(false)} room={room} players={players} />
 
             <Modal opened={endGameModal} onClose={() => setEndGameModal(false)} title="End Game Confirmation">
                 <Stack>
@@ -89,7 +181,7 @@ function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onCl
                 <Select
                     label="Select Player to Pay"
                     placeholder="Choose player"
-                    data={players.map(p => ({ value: p.id, label: p.nickname }))}
+                    data={players.filter(p => p.status !== 'defeated').map(p => ({ value: p.id, label: p.nickname }))}
                     value={playerId}
                     onChange={(val) => setPlayerId(val || '')}
                     required
@@ -104,8 +196,8 @@ function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onCl
 }
 
 function BankModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [mode, setMode] = useState<'to' | 'from' | 'status'>('to');
-    const [amount, setAmount] = useState<number | string>(0);
+    const [mode, setMode] = useState<'to' | 'from'>('to');
+    const [amount, setAmount] = useState<number | string | null>(null);
     const [playerId, setPlayerId] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -125,24 +217,8 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
         setLoading(false);
     };
 
-    const handleStatusToggle = async () => {
-        if (!playerId) return;
-        setLoading(true);
-        try {
-            const player = players.find(p => p.id === playerId);
-            const newStatus = player?.status === 'defeated' ? 'active' : 'defeated';
-            await updatePlayerStatus(playerId, newStatus, room.room_code);
-            onClose();
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    const selectedPlayer = players.find(p => p.id === playerId);
-
     return (
-        <Modal opened={opened} onClose={onClose} title="Bank Operations">
+        <Modal opened={opened} onClose={onClose} title="Bank Transfers">
             <Stack gap="md">
                 <Group grow>
                     <Button variant={mode === 'to' ? 'filled' : 'light'} onClick={() => setMode('to')} leftSection={<IconArrowRight size={16} />}>
@@ -151,47 +227,28 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
                     <Button variant={mode === 'from' ? 'filled' : 'light'} onClick={() => setMode('from')} leftSection={<IconArrowLeft size={16} />}>
                         Collect Money
                     </Button>
-                    <Button variant={mode === 'status' ? 'filled' : 'light'} onClick={() => setMode('status')} leftSection={<IconFlag size={16} />}>
-                        Status
-                    </Button>
                 </Group>
 
                 <Select
                     label="Player"
-                    data={players.map(p => ({
-                        value: p.id,
-                        label: `${p.nickname}${p.status === 'defeated' ? ' (Defeated)' : ''}`
-                    }))}
+                    data={players.filter(p => p.status !== 'defeated').map(p => ({ value: p.id, label: p.nickname }))}
                     value={playerId}
                     onChange={(val) => setPlayerId(val || '')}
                     required
                 />
 
-                {mode !== 'status' && (
-                    <>
-                        <NumberInput
-                            label="Amount"
-                            value={amount}
-                            onChange={setAmount}
-                            min={0}
-                            required
-                        />
+                <NumberInput
+                    label="Amount"
+                    placeholder="0"
+                    value={amount === null ? '' : amount}
+                    onChange={setAmount}
+                    min={0}
+                    required
+                />
 
-                        <Button onClick={handleSubmit} loading={loading}>
-                            {mode === 'to' ? 'Give' : 'Collect'} ${amount}
-                        </Button>
-                    </>
-                )}
-
-                {mode === 'status' && selectedPlayer && (
-                    <Button
-                        onClick={handleStatusToggle}
-                        loading={loading}
-                        color={selectedPlayer.status === 'defeated' ? 'green' : 'red'}
-                    >
-                        {selectedPlayer.status === 'defeated' ? 'Restore Player' : 'Mark as Defeated'}
-                    </Button>
-                )}
+                <Button onClick={handleSubmit} loading={loading}>
+                    {mode === 'to' ? 'Give' : 'Collect'} ${amount || 0}
+                </Button>
             </Stack>
         </Modal>
     );
@@ -199,7 +256,7 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
 
 function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
     const [mode, setMode] = useState<'in' | 'out'>('in');
-    const [amount, setAmount] = useState<number | string>(0);
+    const [amount, setAmount] = useState<number | string | null>(null);
     const [playerId, setPlayerId] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -222,7 +279,9 @@ function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose
     return (
         <Modal opened={opened} onClose={onClose} title="Pot Operations">
             <Stack gap="md">
-                <Text size="sm" c="dimmed">Current Pot: ${room.shared_pot_balance || 0}</Text>
+                <Paper p="sm" radius="md" style={{ background: 'var(--mantine-color-dark-6)' }}>
+                    <Text size="sm" c="dimmed" ta="center">Current Pot: <span style={{ fontWeight: 700, color: 'white' }}>${room.shared_pot_balance || 0}</span></Text>
+                </Paper>
 
                 <Group grow>
                     <Button variant={mode === 'in' ? 'filled' : 'light'} onClick={() => setMode('in')}>
@@ -235,7 +294,7 @@ function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose
 
                 <Select
                     label="Player"
-                    data={players.map(p => ({ value: p.id, label: p.nickname }))}
+                    data={players.filter(p => p.status !== 'defeated').map(p => ({ value: p.id, label: p.nickname }))}
                     value={playerId}
                     onChange={(val) => setPlayerId(val || '')}
                     required
@@ -243,15 +302,76 @@ function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose
 
                 <NumberInput
                     label="Amount"
-                    value={amount}
+                    placeholder="0"
+                    value={amount === null ? '' : amount}
                     onChange={setAmount}
                     min={0}
                     required
                 />
 
                 <Button onClick={handleSubmit} loading={loading}>
-                    Move ${amount}
+                    Move ${amount || 0}
                 </Button>
+            </Stack>
+        </Modal>
+    );
+}
+
+function PlayerStatusModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
+    const [playerId, setPlayerId] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const selectedPlayer = players.find(p => p.id === playerId);
+
+    const handleStatusToggle = async () => {
+        if (!playerId) return;
+        setLoading(true);
+        try {
+            const player = players.find(p => p.id === playerId);
+            const newStatus = player?.status === 'defeated' ? 'active' : 'defeated';
+            await updatePlayerStatus(playerId, newStatus, room.room_code);
+            onClose();
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title="Player Status Management">
+            <Stack gap="md">
+                <Select
+                    label="Select Player"
+                    placeholder="Choose player"
+                    data={players.map(p => ({
+                        value: p.id,
+                        label: `${p.nickname}${p.status === 'defeated' ? ' (Defeated)' : ''}`
+                    }))}
+                    value={playerId}
+                    onChange={(val) => setPlayerId(val || '')}
+                    required
+                />
+
+                {selectedPlayer && (
+                    <>
+                        <Paper p="md" radius="md" style={{ background: 'var(--mantine-color-dark-6)' }}>
+                            <Group justify="space-between">
+                                <Text size="sm">Current Status:</Text>
+                                <Badge color={selectedPlayer.status === 'defeated' ? 'red' : 'green'} variant="filled">
+                                    {selectedPlayer.status === 'defeated' ? 'Defeated' : 'Active'}
+                                </Badge>
+                            </Group>
+                        </Paper>
+
+                        <Button
+                            onClick={handleStatusToggle}
+                            loading={loading}
+                            color={selectedPlayer.status === 'defeated' ? 'green' : 'red'}
+                        >
+                            {selectedPlayer.status === 'defeated' ? 'Restore Player' : 'Mark as Defeated'}
+                        </Button>
+                    </>
+                )}
             </Stack>
         </Modal>
     );
