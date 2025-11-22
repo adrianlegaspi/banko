@@ -81,7 +81,8 @@ export default function CreateRoom() {
                     initial_player_balance: initialBalance,
                     salary_amount: parseFloat(formData.get('salaryAmount') as string),
                     status: 'lobby',
-                    shared_pot_balance: 0
+                    shared_pot_balance: 0,
+                    dice_sides: parseInt(formData.get('diceSides') as string) || 12
                 })
                 .select()
                 .single();
@@ -160,6 +161,17 @@ export default function CreateRoom() {
                             label="Salary Amount (Pass Go)"
                             defaultValue={200}
                             min={0}
+                            required
+                            disabled={submitting}
+                        />
+
+                        <NumberInput
+                            name="diceSides"
+                            label="Dice Sides"
+                            description="Number of sides on the dice (default 12)"
+                            defaultValue={12}
+                            min={2}
+                            max={100}
                             required
                             disabled={submitting}
                         />

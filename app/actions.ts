@@ -15,6 +15,7 @@ export type Room = {
   salary_amount: number
   status: 'lobby' | 'in_progress' | 'finished'
   shared_pot_balance: number
+  dice_sides: number
   created_at: string
 }
 
@@ -67,7 +68,8 @@ export async function createRoom(formData: FormData) {
       bank_display_name: bankDisplayName,
       initial_player_balance: initialBalance,
       status: 'lobby',
-      shared_pot_balance: 0
+      shared_pot_balance: 0,
+      dice_sides: Number(formData.get('diceSides')) || 12
     })
     .select()
     .single()
@@ -265,6 +267,24 @@ export async function respondToPaymentRequest(
   revalidatePath(`/room/${roomCode}/game`)
 }
 
+export async function rollDice(roomId: string, playerId: string, sides: number) {
+  const adminAuthClient = createAdminClient()
+  
+  const roll = Math.floor(Math.random() * sides) + 1
+  
+  const { error } = await adminAuthClient
+    .from('game_events')
+    .insert({
+      room_id: roomId,
+      player_id: playerId,
+      event_type: 'dice_roll',
+      payload: { roll, sides }
+    })
+    
+  if (error) throw new Error(error.message)
+  return roll
+}
+
 // --- DATA FETCHING (Server Side) ---
 
 export async function getRoomByCode(code: string) {
@@ -304,6 +324,18 @@ export async function getTransactions(roomId: string) {
     .limit(50)
   return data
 }
+
+export async function getGameEvents(roomId: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient
+    .from('game_events')
+    .select('*, player:players(nickname)')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  return data
+}
+
 export async function createGuestAccount() {
   const adminAuthClient = createAdminClient()
   

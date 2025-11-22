@@ -1,14 +1,14 @@
 'use client'
 
 import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode } from '@tabler/icons-react';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
-import { createTransaction, createPaymentRequest, respondToPaymentRequest } from '@/app/actions';
+import { createTransaction, createPaymentRequest, respondToPaymentRequest, rollDice } from '@/app/actions';
 import BankPanel from '@/components/BankPanel';
 
 type Transaction = any;
@@ -18,15 +18,18 @@ type Props = {
     currentPlayer: Player;
     players: Player[];
     transactions: Transaction[];
+    gameEvents: any[];
 };
 
-export default function GameClient({ room, currentPlayer, players: initialPlayers, transactions: initialTransactions }: Props) {
+export default function GameClient({ room, currentPlayer, players: initialPlayers, transactions: initialTransactions, gameEvents: initialGameEvents }: Props) {
     const [players, setPlayers] = useState(initialPlayers);
     const [transactions, setTransactions] = useState(initialTransactions);
+    const [gameEvents, setGameEvents] = useState(initialGameEvents);
     const [sendModalOpen, setSendModalOpen] = useState(false);
     const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const [scanModalOpen, setScanModalOpen] = useState(false);
+    const [rolling, setRolling] = useState(false);
     const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
     const [activityPage, setActivityPage] = useState(0);
     const router = useRouter();
@@ -70,6 +73,11 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 if (payload.new.status === 'finished') {
                     window.location.href = `/room/${room.room_code}/finish`;
                 }
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_events', filter: `room_id=eq.${room.id}` }, () => {
+                supabase.from('game_events').select('*, player:players(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
+                    if (data) setGameEvents(data);
+                });
             })
             .subscribe();
 
@@ -191,6 +199,23 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                             Scan
                         </Button>
                     </Group>
+                    <Button
+                        leftSection={<IconSquare size={18} />}
+                        color="orange"
+                        variant="light"
+                        onClick={async () => {
+                            setRolling(true);
+                            try {
+                                await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
+                            } catch (e) {
+                                console.error(e);
+                            }
+                            setRolling(false);
+                        }}
+                        loading={rolling}
+                    >
+                        Roll Dice (d{room.dice_sides || 12})
+                    </Button>
                 </Stack>
 
                 {/* Bank Panel (Operator Only) */}
@@ -238,7 +263,15 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                     amount: pr.amount,
                                     description: pr.description,
                                     created_at: pr.updated_at || pr.created_at
-                                }))
+                                })),
+                            ...gameEvents.map((ge: any) => ({
+                                id: ge.id,
+                                type: 'dice_roll',
+                                from: ge.player?.nickname || 'Unknown',
+                                description: `Rolled a ${ge.payload.roll} (d${ge.payload.sides})`,
+                                created_at: ge.created_at,
+                                payload: ge.payload
+                            }))
                         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
                         const itemsPerPage = 8;
@@ -277,6 +310,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                             {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
                                                             {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
                                                             {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                            {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
                                                         </Text>
                                                         {activity.description && (
                                                             <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
@@ -285,14 +319,21 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                             {timeAgo}
                                                         </Text>
                                                     </div>
-                                                    <Text
-                                                        size="xs"
-                                                        fw={600}
-                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
-                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
-                                                    >
-                                                        ${activity.amount}
-                                                    </Text>
+                                                    {activity.type !== 'dice_roll' && (
+                                                        <Text
+                                                            size="xs"
+                                                            fw={600}
+                                                            c={activity.type === 'request_rejected' ? 'red' : undefined}
+                                                            style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
+                                                        >
+                                                            ${activity.amount}
+                                                        </Text>
+                                                    )}
+                                                    {activity.type === 'dice_roll' && (
+                                                        <Badge size="lg" variant="light" color="orange">
+                                                            {activity.payload.roll}
+                                                        </Badge>
+                                                    )}
                                                 </Group>
                                             );
                                         })
@@ -372,6 +413,7 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
     const [error, setError] = useState<string | null>(null);
     const [cameras, setCameras] = useState<any[]>([]);
     const [scanning, setScanning] = useState(false);
+    const [cameraIndex, setCameraIndex] = useState(0);
 
     useEffect(() => {
         let html5QrCode: Html5Qrcode | null = null;
@@ -415,8 +457,8 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
                 if (devices && devices.length > 0) {
                     setScanning(true);
 
-                    // Use the first camera (usually back/environment camera)
-                    const cameraId = devices[0].id;
+                    // Use the camera at current index
+                    const cameraId = devices[cameraIndex % devices.length].id;
 
                     await html5QrCode.start(
                         cameraId,
@@ -491,7 +533,7 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
                 html5QrCode.stop().catch(err => console.error("Failed to stop scanner", err));
             }
         };
-    }, [onClose, router, roomId, currentPlayerId]);
+    }, [onClose, router, roomId, currentPlayerId, cameraIndex]);
 
     return (
         <Stack align="center" gap="md">
@@ -506,6 +548,16 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
                         </Text>
                     )}
                 </Stack>
+            )}
+
+            {cameras.length > 1 && (
+                <Button
+                    variant="light"
+                    leftSection={<IconRefresh size={16} />}
+                    onClick={() => setCameraIndex(prev => prev + 1)}
+                >
+                    Switch Camera
+                </Button>
             )}
             {scanning && <Text size="xs" c="dimmed">Point camera at a Banko QR code</Text>}
         </Stack>

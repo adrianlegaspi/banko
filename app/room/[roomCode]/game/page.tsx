@@ -1,4 +1,4 @@
-import { getRoomByCode, getPlayer, getPlayers, getTransactions } from '@/app/actions';
+import { getRoomByCode, getPlayer, getPlayers, getTransactions, getGameEvents } from '@/app/actions';
 import { createClient } from '@/utils/supabase/server';
 import { redirect } from 'next/navigation';
 import GameClient from './GameClient';
@@ -20,6 +20,7 @@ export default async function GamePage({ params }: { params: { roomCode: string 
 
     const players = await getPlayers(room.id);
     const transactions = await getTransactions(room.id);
+    const gameEvents = await getGameEvents(room.id);
 
     return (
         <GameClient
@@ -27,6 +28,7 @@ export default async function GamePage({ params }: { params: { roomCode: string 
             currentPlayer={player}
             players={players || []}
             transactions={transactions || []}
+            gameEvents={gameEvents || []}
         />
     );
 }
