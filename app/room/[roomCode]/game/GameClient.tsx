@@ -104,7 +104,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     radius="lg"
                     withBorder
                     style={{
-                        background: 'linear-gradient(135deg, var(--mantine-color-violet-9) 0%, var(--mantine-color-grape-9) 100%)',
+                        background: `linear-gradient(135deg, var(--mantine-color-${currentPlayer.color}-9) 0%, var(--mantine-color-${currentPlayer.color}-7) 100%)`,
                         color: 'white',
                         position: 'relative',
                         overflow: 'hidden',
