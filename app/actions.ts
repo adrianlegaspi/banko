@@ -1,0 +1,305 @@
+'use server'
+
+import { createClient } from '@/utils/supabase/server'
+import { createAdminClient } from '@/utils/supabase/server'
+import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
+
+// --- TYPES ---
+export type Room = {
+  id: string
+  room_code: string
+  room_name: string
+  initial_player_balance: number
+  bank_display_name: string
+  status: 'lobby' | 'in_progress' | 'finished'
+  shared_pot_balance: number
+  created_at: string
+}
+
+export type Player = {
+  id: string
+  room_id: string
+  supabase_user_id: string
+  nickname: string
+  color: string
+  current_balance: number
+  is_bank_operator: boolean
+}
+
+export type TransactionType = 'bank_to_player' | 'player_to_bank' | 'player_to_player' | 'pot_in' | 'pot_out' | 'reversal'
+
+// --- HELPERS ---
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // No I, O, 1, 0 to avoid confusion
+  let result = ''
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+// --- ACTIONS ---
+
+export async function createRoom(formData: FormData) {
+  const supabase = await createClient()
+  const adminAuthClient = createAdminClient() // Use admin for creation to ensure permissions if needed, but mainly for reliable writes
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  console.log('createRoom auth check:', user?.id, authError)
+  if (!user) throw new Error('Not authenticated: ' + (authError?.message || 'No user'))
+
+  const roomName = formData.get('roomName') as string
+  const bankDisplayName = formData.get('bankDisplayName') as string
+  const initialBalance = parseFloat(formData.get('initialBalance') as string)
+  const nickname = formData.get('nickname') as string
+  const color = formData.get('color') as string
+
+  const roomCode = generateRoomCode()
+
+  // 1. Create Room
+  const { data: room, error: roomError } = await adminAuthClient
+    .from('rooms')
+    .insert({
+      room_code: roomCode,
+      room_name: roomName,
+      bank_display_name: bankDisplayName,
+      initial_player_balance: initialBalance,
+      status: 'lobby',
+      shared_pot_balance: 0
+    })
+    .select()
+    .single()
+
+  if (roomError) throw new Error(roomError.message)
+
+  // 2. Create Bank Operator Player
+  const { error: playerError } = await adminAuthClient
+    .from('players')
+    .insert({
+      room_id: room.id,
+      supabase_user_id: user.id,
+      nickname: nickname,
+      color: color,
+      current_balance: initialBalance,
+      is_bank_operator: true
+    })
+
+  if (playerError) throw new Error(playerError.message)
+
+  redirect(`/room/${roomCode}/lobby`)
+}
+
+export async function joinRoom(formData: FormData) {
+  const supabase = await createClient()
+  const adminAuthClient = createAdminClient()
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const roomCode = (formData.get('roomCode') as string).toUpperCase()
+  const nickname = formData.get('nickname') as string
+  const color = formData.get('color') as string
+
+  // 1. Find Room
+  const { data: room, error: roomError } = await adminAuthClient
+    .from('rooms')
+    .select('*')
+    .eq('room_code', roomCode)
+    .single()
+
+  if (roomError || !room) throw new Error('Room not found')
+  if (room.status !== 'lobby') throw new Error('Game already started or finished')
+
+  // 2. Check if already joined (optional, but good UX)
+  const { data: existingPlayer } = await adminAuthClient
+    .from('players')
+    .select('*')
+    .eq('room_id', room.id)
+    .eq('supabase_user_id', user.id)
+    .single()
+
+  if (existingPlayer) {
+    redirect(`/room/${roomCode}/lobby`)
+  }
+
+  // 3. Create Player
+  const { error: playerError } = await adminAuthClient
+    .from('players')
+    .insert({
+      room_id: room.id,
+      supabase_user_id: user.id,
+      nickname: nickname,
+      color: color,
+      current_balance: room.initial_player_balance,
+      is_bank_operator: false
+    })
+
+  if (playerError) throw new Error(playerError.message)
+
+  revalidatePath(`/room/${roomCode}/lobby`)
+  redirect(`/room/${roomCode}/lobby`)
+}
+
+export async function startGame(roomCode: string) {
+  const adminAuthClient = createAdminClient()
+  
+  const { error } = await adminAuthClient
+    .from('rooms')
+    .update({ status: 'in_progress' })
+    .eq('room_code', roomCode)
+
+  if (error) throw new Error(error.message)
+  
+  revalidatePath(`/room/${roomCode}/lobby`)
+  redirect(`/room/${roomCode}/game`)
+}
+
+export async function finishGame(roomCode: string) {
+  const adminAuthClient = createAdminClient()
+  
+  const { error } = await adminAuthClient
+    .from('rooms')
+    .update({ status: 'finished' })
+    .eq('room_code', roomCode)
+
+  if (error) throw new Error(error.message)
+  
+  revalidatePath(`/room/${roomCode}/game`)
+  redirect(`/room/${roomCode}/finish`)
+}
+
+export async function createTransaction(
+  roomId: string,
+  type: TransactionType,
+  amount: number,
+  description: string,
+  fromPlayerId?: string,
+  toPlayerId?: string
+) {
+  const adminAuthClient = createAdminClient()
+
+  // Call RPC
+  const { error } = await adminAuthClient.rpc('perform_transaction', {
+    p_room_id: roomId,
+    p_from_player_id: fromPlayerId || null,
+    p_to_player_id: toPlayerId || null,
+    p_amount: amount,
+    p_type: type,
+    p_description: description
+  })
+
+  if (error) throw new Error(error.message)
+  
+  revalidatePath('/room/[roomCode]/game', 'page') // We don't have roomCode here easily, maybe pass it?
+  // Or just revalidate everything?
+  // Since we use Realtime, revalidation is less critical for the immediate user, but good for consistency.
+}
+
+export async function createPaymentRequest(
+  roomId: string,
+  fromPlayerId: string,
+  amount: number,
+  description: string,
+  toPlayerId?: string // Optional for QR
+) {
+  const adminAuthClient = createAdminClient()
+
+  const { data, error } = await adminAuthClient
+    .from('payment_requests')
+    .insert({
+      room_id: roomId,
+      from_player_id: fromPlayerId,
+      to_player_id: toPlayerId || null,
+      amount: amount,
+      description: description,
+      status: 'pending'
+    })
+    .select()
+    .single()
+
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function respondToPaymentRequest(
+  requestId: string,
+  action: 'accepted' | 'rejected',
+  payerId: string, // The one paying
+  roomCode: string // For revalidation
+) {
+  const adminAuthClient = createAdminClient()
+
+  // 1. Get Request
+  const { data: request, error: reqError } = await adminAuthClient
+    .from('payment_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single()
+
+  if (reqError || !request) throw new Error('Request not found')
+  if (request.status !== 'pending') throw new Error('Request already processed')
+
+  // 2. Update Status
+  const { error: updateError } = await adminAuthClient
+    .from('payment_requests')
+    .update({ status: action, to_player_id: payerId }) // Ensure payer is set if it was QR
+    .eq('id', requestId)
+
+  if (updateError) throw new Error(updateError.message)
+
+  // 3. If Accepted, Create Transaction
+  if (action === 'accepted') {
+    // Player to Player
+    await createTransaction(
+      request.room_id,
+      'player_to_player',
+      request.amount,
+      request.description || 'Payment Request',
+      payerId, // From
+      request.from_player_id // To
+    )
+  }
+  
+  revalidatePath(`/room/${roomCode}/game`)
+}
+
+// --- DATA FETCHING (Server Side) ---
+
+export async function getRoomByCode(code: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient.from('rooms').select('*').eq('room_code', code).single()
+  return data
+}
+
+export async function getPlayer(roomId: string, userId: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient
+    .from('players')
+    .select('*')
+    .eq('room_id', roomId)
+    .eq('supabase_user_id', userId)
+    .single()
+  return data
+}
+
+export async function getPlayers(roomId: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient
+    .from('players')
+    .select('*')
+    .eq('room_id', roomId)
+    .order('nickname')
+  return data
+}
+
+export async function getTransactions(roomId: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient
+    .from('transactions')
+    .select('*, from_player:players!from_player_id(nickname), to_player:players!to_player_id(nickname)')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  return data
+}
