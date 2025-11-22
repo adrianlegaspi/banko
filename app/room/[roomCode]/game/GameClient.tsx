@@ -1,7 +1,7 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy } from '@tabler/icons-react';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon } from '@mantine/core';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
@@ -30,6 +30,8 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const [scanModalOpen, setScanModalOpen] = useState(false);
+    const [defaultRecipientId, setDefaultRecipientId] = useState<string | null>(null);
+    const [defaultRequestPayerId, setDefaultRequestPayerId] = useState<string | null>(null);
     const [rolling, setRolling] = useState(false);
     const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
     const [activityPage, setActivityPage] = useState(0);
@@ -444,22 +446,49 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                 </Group>
                                 <Stack gap="xs">
                                     {players.map((p) => (
-                                        <Paper key={p.id} p="xs" radius="md" style={{ background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
-                                            <Group justify="space-between">
-                                                <Group gap="sm">
-                                                    <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                                    <div>
+                                        <Menu key={p.id} shadow="md" width={200} position="bottom-end">
+                                            <Menu.Target>
+                                                <Paper p="xs" radius="md" style={{ background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)', opacity: p.status === 'defeated' ? 0.6 : 1, cursor: 'pointer' }}>
+                                                    <Group justify="space-between">
+                                                        <Group gap="sm">
+                                                            <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
+                                                            <div>
+                                                                <Group gap="xs">
+                                                                    <Text size="sm" fw={500}>{p.nickname}</Text>
+                                                                    {p.status === 'defeated' && (
+                                                                        <Badge size="xs" color="red" variant="filled">Defeated</Badge>
+                                                                    )}
+                                                                </Group>
+                                                            </div>
+                                                        </Group>
                                                         <Group gap="xs">
-                                                            <Text size="sm" fw={500}>{p.nickname}</Text>
-                                                            {p.status === 'defeated' && (
-                                                                <Badge size="xs" color="red" variant="filled">Defeated</Badge>
+                                                            <Text size="sm" fw={600}>${p.current_balance}</Text>
+                                                            {p.id !== currentPlayer.id && !isDefeated && p.status !== 'defeated' && (
+                                                                <IconDotsVertical size={16} style={{ opacity: 0.5 }} />
                                                             )}
                                                         </Group>
-                                                    </div>
-                                                </Group>
-                                                <Text size="sm" fw={600}>${p.current_balance}</Text>
-                                            </Group>
-                                        </Paper>
+                                                    </Group>
+                                                </Paper>
+                                            </Menu.Target>
+
+                                            {p.id !== currentPlayer.id && !isDefeated && p.status !== 'defeated' && (
+                                                <Menu.Dropdown>
+                                                    <Menu.Label>Actions for {p.nickname}</Menu.Label>
+                                                    <Menu.Item leftSection={<IconSend size={14} />} onClick={() => {
+                                                        setDefaultRecipientId(p.id);
+                                                        setSendModalOpen(true);
+                                                    }}>
+                                                        Send Money
+                                                    </Menu.Item>
+                                                    <Menu.Item leftSection={<IconDownload size={14} />} onClick={() => {
+                                                        setDefaultRequestPayerId(p.id);
+                                                        setRequestModalOpen(true);
+                                                    }}>
+                                                        Request Money
+                                                    </Menu.Item>
+                                                </Menu.Dropdown>
+                                            )}
+                                        </Menu>
                                     ))}
                                 </Stack>
                             </Paper>
@@ -604,8 +633,9 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     room={room}
                     players={players}
                     currentPlayerId={currentPlayer.id}
-                    onClose={() => setSendModalOpen(false)}
+                    onClose={() => { setSendModalOpen(false); setDefaultRecipientId(null); }}
                     modalOpen={sendModalOpen}
+                    initialRecipientId={defaultRecipientId}
                 />
             </Modal >
 
@@ -615,8 +645,9 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     roomId={room.id}
                     players={players}
                     currentPlayerId={currentPlayer.id}
-                    onClose={() => setRequestModalOpen(false)}
+                    onClose={() => { setRequestModalOpen(false); setDefaultRequestPayerId(null); }}
                     modalOpen={requestModalOpen}
+                    initialPayerId={defaultRequestPayerId}
                 />
             </Modal >
 
@@ -827,20 +858,22 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
     );
 }
 
-function SendMoneyForm({ roomId, players, currentPlayerId, room, onClose, modalOpen }: any) {
+function SendMoneyForm({ roomId, players, currentPlayerId, room, onClose, modalOpen, initialRecipientId }: any) {
     const [amount, setAmount] = useState<number | string | null>(null);
-    const [toPlayerId, setToPlayerId] = useState<string | null>(null);
+    const [toPlayerId, setToPlayerId] = useState<string | null>(initialRecipientId || null);
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Reset form when modal closes
+    // Reset form when modal closes or opens
     useEffect(() => {
-        if (!modalOpen) {
+        if (modalOpen) {
+            setToPlayerId(initialRecipientId || null);
+        } else {
             setAmount(null);
             setToPlayerId(null);
             setDescription('');
         }
-    }, [modalOpen]);
+    }, [modalOpen, initialRecipientId]);
 
     const handleSend = async () => {
         if (toPlayerId === null || !amount) return;
@@ -889,20 +922,22 @@ function SendMoneyForm({ roomId, players, currentPlayerId, room, onClose, modalO
     );
 }
 
-function RequestMoneyForm({ roomId, players, currentPlayerId, onClose, modalOpen }: any) {
+function RequestMoneyForm({ roomId, players, currentPlayerId, onClose, modalOpen, initialPayerId }: any) {
     const [amount, setAmount] = useState<number | string | null>(null);
-    const [fromPlayerId, setFromPlayerId] = useState<string | null>(null);
+    const [fromPlayerId, setFromPlayerId] = useState<string | null>(initialPayerId || null);
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
 
-    // Reset form when modal closes
+    // Reset form when modal closes or opens
     useEffect(() => {
-        if (!modalOpen) {
+        if (modalOpen) {
+            setFromPlayerId(initialPayerId || null);
+        } else {
             setAmount(null);
             setFromPlayerId(null);
             setDescription('');
         }
-    }, [modalOpen]);
+    }, [modalOpen, initialPayerId]);
 
     const handleRequest = async () => {
         if (!fromPlayerId || !amount) return;

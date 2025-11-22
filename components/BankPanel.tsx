@@ -1,10 +1,10 @@
 'use client'
 
-import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl } from '@mantine/core';
-import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy } from '@tabler/icons-react';
-import { useState } from 'react';
+import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl, Tabs, ScrollArea, TextInput } from '@mantine/core';
+import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy, IconBuildingEstate, IconRefresh } from '@tabler/icons-react';
+import { useState, useEffect } from 'react';
 import type { Player, Room } from '@/app/actions';
-import { createTransaction, finishGame, updatePlayerStatus } from '@/app/actions';
+import { createTransaction, finishGame, updatePlayerStatus, createLoan, repayLoan, getLoans } from '@/app/actions';
 import PlayerSelector from './PlayerSelector';
 
 type Props = {
@@ -17,6 +17,8 @@ export default function BankPanel({ room, players }: Props) {
     const [potModal, setPotModal] = useState(false);
     const [salaryModal, setSalaryModal] = useState(false);
     const [playerModal, setPlayerModal] = useState(false);
+
+    const [loansModal, setLoansModal] = useState(false);
     const [endGameModal, setEndGameModal] = useState(false);
 
     return (
@@ -125,6 +127,26 @@ export default function BankPanel({ room, players }: Props) {
                             <Text size="xs" c="white" opacity={0.7}>Active / Defeated</Text>
                         </Stack>
                     </Paper>
+
+                    {/* Loans & Mortgages */}
+                    <Paper
+                        p="lg"
+                        radius="md"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--mantine-color-teal-9) 0%, var(--mantine-color-teal-7) 100%)',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        onClick={() => setLoansModal(true)}
+                    >
+                        <Stack align="center" gap="xs">
+                            <IconBuildingEstate size={32} style={{ color: 'white' }} />
+                            <Text size="sm" fw={600} c="white" ta="center">Loans & Mortgages</Text>
+                            <Text size="xs" c="white" opacity={0.7}>Issue / Repay</Text>
+                        </Stack>
+                    </Paper>
                 </SimpleGrid>
 
                 {/* End Game - Danger Zone */}
@@ -145,7 +167,9 @@ export default function BankPanel({ room, players }: Props) {
             <BankModal opened={bankModal} onClose={() => setBankModal(false)} room={room} players={players} />
             <PotModal opened={potModal} onClose={() => setPotModal(false)} room={room} players={players} />
             <SalaryModal opened={salaryModal} onClose={() => setSalaryModal(false)} room={room} players={players} />
+
             <PlayerStatusModal opened={playerModal} onClose={() => setPlayerModal(false)} room={room} players={players} />
+            <LoansModal opened={loansModal} onClose={() => setLoansModal(false)} room={room} players={players} />
 
             <Modal opened={endGameModal} onClose={() => setEndGameModal(false)} title="End Game Confirmation">
                 <Stack>
@@ -185,7 +209,7 @@ function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onCl
                     currentPlayerId="bank"
                     room={room}
                     selectedPlayerId={playerId}
-                    onSelect={setPlayerId}
+                    onSelect={(val) => setPlayerId(val || '')}
                 />
 
                 <Button
@@ -250,7 +274,7 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
                             currentPlayerId="bank"
                             room={room}
                             selectedPlayerId={playerId}
-                            onSelect={setPlayerId}
+                            onSelect={(val) => setPlayerId(val || '')}
                         />
 
                         <NumberInput
@@ -339,7 +363,7 @@ function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose
                             currentPlayerId="bank"
                             room={room}
                             selectedPlayerId={playerId}
-                            onSelect={setPlayerId}
+                            onSelect={(val) => setPlayerId(val || '')}
                         />
 
                         <NumberInput
@@ -420,7 +444,7 @@ function PlayerStatusModal({ opened, onClose, room, players }: { opened: boolean
                     currentPlayerId="bank"
                     room={room}
                     selectedPlayerId={playerId}
-                    onSelect={setPlayerId}
+                    onSelect={(val) => setPlayerId(val || '')}
                     showDefeated={true}
                 />
 
@@ -447,6 +471,153 @@ function PlayerStatusModal({ opened, onClose, room, players }: { opened: boolean
                     </Paper>
                 )}
             </Stack>
+        </Modal>
+    );
+}
+
+function LoansModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
+    const [activeTab, setActiveTab] = useState<string | null>('active');
+    const [loans, setLoans] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    // Issue Loan State
+    const [playerId, setPlayerId] = useState('');
+    const [amount, setAmount] = useState<number | string | null>(null);
+    const [description, setDescription] = useState('');
+    const [issueLoading, setIssueLoading] = useState(false);
+
+    const fetchLoans = async () => {
+        setLoading(true);
+        try {
+            const data = await getLoans(room.id);
+            setLoans(data || []);
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        if (opened) {
+            fetchLoans();
+        }
+    }, [opened]);
+
+    const handleIssueLoan = async () => {
+        if (!playerId || !amount) return;
+        setIssueLoading(true);
+        try {
+            await createLoan(room.id, playerId, Number(amount), description || 'Loan');
+            setAmount(null);
+            setDescription('');
+            setPlayerId('');
+            setActiveTab('active');
+            fetchLoans();
+        } catch (error) {
+            console.error(error);
+        }
+        setIssueLoading(false);
+    };
+
+    const handleRepay = async (loanId: string, repayAmount: number) => {
+        if (!confirm(`Repay $${repayAmount}?`)) return;
+        try {
+            await repayLoan(loanId, repayAmount, room.id);
+            fetchLoans();
+        } catch (error) {
+            console.error(error);
+            alert('Repayment failed. Check funds.');
+        }
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title="Loans & Mortgages" size="lg">
+            <Tabs value={activeTab} onChange={setActiveTab}>
+                <Tabs.List mb="md">
+                    <Tabs.Tab value="active" leftSection={<IconBuildingEstate size={16} />}>
+                        Active Loans
+                    </Tabs.Tab>
+                    <Tabs.Tab value="issue" leftSection={<IconCoin size={16} />}>
+                        Issue Loan
+                    </Tabs.Tab>
+                </Tabs.List>
+
+                <Tabs.Panel value="active">
+                    <Stack gap="md">
+                        <Group justify="flex-end">
+                            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchLoans} loading={loading}>
+                                Refresh
+                            </Button>
+                        </Group>
+
+                        {loans.length === 0 ? (
+                            <Text c="dimmed" ta="center" py="xl">No active loans</Text>
+                        ) : (
+                            <ScrollArea h={300}>
+                                <Stack gap="sm">
+                                    {loans.map((loan) => (
+                                        <Paper key={loan.id} p="sm" withBorder>
+                                            <Group justify="space-between" align="flex-start">
+                                                <div>
+                                                    <Text fw={600}>{loan.player?.nickname}</Text>
+                                                    <Text size="sm" c="dimmed">{loan.description}</Text>
+                                                    <Text size="xs" c="dimmed">{new Date(loan.created_at).toLocaleDateString()}</Text>
+                                                </div>
+                                                <Stack align="flex-end" gap="xs">
+                                                    <Text fw={700} size="lg" c="red">-${loan.amount}</Text>
+                                                    <Button size="xs" variant="light" color="blue" onClick={() => handleRepay(loan.id, loan.amount)}>
+                                                        Repay Full
+                                                    </Button>
+                                                </Stack>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            </ScrollArea>
+                        )}
+                    </Stack>
+                </Tabs.Panel>
+
+                <Tabs.Panel value="issue">
+                    <Stack gap="md">
+                        <Text size="sm" fw={500}>Select Player to Issue Loan to:</Text>
+                        <PlayerSelector
+                            players={players}
+                            currentPlayerId="bank"
+                            room={room}
+                            selectedPlayerId={playerId}
+                            onSelect={(val) => setPlayerId(val || '')}
+                        />
+
+                        <NumberInput
+                            label="Loan Amount"
+                            placeholder="0"
+                            value={amount === null ? '' : amount}
+                            onChange={setAmount}
+                            min={0}
+                            leftSection={<IconCoin size={16} />}
+                        />
+
+                        <TextInput
+                            label="Description"
+                            placeholder="e.g. Mortgage for Boardwalk"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                        />
+
+                        <Button
+                            fullWidth
+                            size="lg"
+                            color="teal"
+                            onClick={handleIssueLoan}
+                            loading={issueLoading}
+                            disabled={!playerId || !amount}
+                        >
+                            Issue Loan of ${amount || 0}
+                        </Button>
+                    </Stack>
+                </Tabs.Panel>
+            </Tabs>
         </Modal>
     );
 }

@@ -183,6 +183,19 @@ export async function createTransaction(
 ) {
   const adminAuthClient = createAdminClient()
 
+  // Overdraft Protection
+  if (['player_to_player', 'player_to_bank', 'pot_in'].includes(type) && fromPlayerId) {
+    const { data: player } = await adminAuthClient
+      .from('players')
+      .select('current_balance')
+      .eq('id', fromPlayerId)
+      .single()
+      
+    if (player && player.current_balance < amount) {
+      throw new Error(`Insufficient funds. You only have $${player.current_balance}.`)
+    }
+  }
+
   // Call RPC
   const { error } = await adminAuthClient.rpc('perform_transaction', {
     p_room_id: roomId,
@@ -297,6 +310,84 @@ export async function updatePlayerStatus(playerId: string, status: 'active' | 'd
   if (error) throw new Error(error.message)
   
   revalidatePath(`/room/${roomCode}/game`)
+}
+
+// --- LOANS ---
+
+export async function createLoan(roomId: string, playerId: string, amount: number, description: string) {
+  const adminAuthClient = createAdminClient()
+
+  // 1. Create Loan Record
+  const { error: loanError } = await adminAuthClient
+    .from('loans')
+    .insert({
+      room_id: roomId,
+      player_id: playerId,
+      amount: amount,
+      description: description,
+      status: 'active'
+    })
+
+  if (loanError) throw new Error(loanError.message)
+
+  // 2. Transfer Money (Bank -> Player)
+  // Note: Bank has infinite money, so no overdraft check needed for bank
+  await createTransaction(roomId, 'bank_to_player', amount, `Loan: ${description}`, undefined, playerId)
+}
+
+export async function repayLoan(loanId: string, amount: number, roomId: string) {
+  const adminAuthClient = createAdminClient()
+
+  // 1. Get Loan
+  const { data: loan, error: loanError } = await adminAuthClient
+    .from('loans')
+    .select('*')
+    .eq('id', loanId)
+    .single()
+
+  if (loanError || !loan) throw new Error('Loan not found')
+
+  // 2. Transfer Money (Player -> Bank)
+  // This will trigger overdraft check in createTransaction
+  await createTransaction(roomId, 'player_to_bank', amount, `Loan Repayment: ${loan.description}`, loan.player_id, undefined)
+
+  // 3. Update Loan
+  // If fully paid, maybe mark as paid? For now just reduce amount or keep track?
+  // The user request implies "tracking".
+  // Let's assume "repay" means paying off a chunk.
+  // If we want to track the remaining balance, we should probably update the loan amount or have a separate "repaid" field.
+  // For simplicity, let's assume we just update the status if fully paid, but the user might want partials.
+  // However, the current schema has 'amount'. Let's assume 'amount' is the original amount.
+  // Actually, to track "remaining", we might need to update 'amount' or delete the loan if 0.
+  // Let's just delete the loan if it's fully paid? Or update amount?
+  // Let's update the amount.
+  
+  const newAmount = Number(loan.amount) - amount
+  
+  if (newAmount <= 0) {
+     await adminAuthClient
+      .from('loans')
+      .update({ status: 'paid', amount: 0 })
+      .eq('id', loanId)
+  } else {
+     await adminAuthClient
+      .from('loans')
+      .update({ amount: newAmount })
+      .eq('id', loanId)
+  }
+
+  revalidatePath(`/room/${roomId}/game`) // Revalidate to show updated loans
+}
+
+export async function getLoans(roomId: string) {
+  const adminAuthClient = createAdminClient()
+  const { data } = await adminAuthClient
+    .from('loans')
+    .select('*, player:players(nickname)')
+    .eq('room_id', roomId)
+    .eq('status', 'active')
+    .order('created_at')
+  return data
 }
 
 // --- DATA FETCHING (Server Side) ---
