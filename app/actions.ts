@@ -27,6 +27,7 @@ export type Player = {
   color: string
   current_balance: number
   is_bank_operator: boolean
+  status: 'active' | 'defeated'
 }
 
 export type TransactionType = 'bank_to_player' | 'player_to_bank' | 'player_to_player' | 'pot_in' | 'pot_out' | 'reversal'
@@ -283,6 +284,19 @@ export async function rollDice(roomId: string, playerId: string, sides: number) 
     
   if (error) throw new Error(error.message)
   return roll
+}
+
+export async function updatePlayerStatus(playerId: string, status: 'active' | 'defeated', roomCode: string) {
+  const adminAuthClient = createAdminClient()
+  
+  const { error } = await adminAuthClient
+    .from('players')
+    .update({ status })
+    .eq('id', playerId)
+    
+  if (error) throw new Error(error.message)
+  
+  revalidatePath(`/room/${roomCode}/game`)
 }
 
 // --- DATA FETCHING (Server Side) ---

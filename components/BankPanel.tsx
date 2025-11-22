@@ -4,7 +4,7 @@ import { Paper, Title, Stack, Group, Button, NumberInput, Select, Modal, Text } 
 import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { Player, Room } from '@/app/actions';
-import { createTransaction, finishGame } from '@/app/actions';
+import { createTransaction, finishGame, updatePlayerStatus } from '@/app/actions';
 
 type Props = {
     room: Room;
@@ -104,7 +104,7 @@ function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onCl
 }
 
 function BankModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [mode, setMode] = useState<'to' | 'from'>('to');
+    const [mode, setMode] = useState<'to' | 'from' | 'status'>('to');
     const [amount, setAmount] = useState<number | string>(0);
     const [playerId, setPlayerId] = useState('');
     const [loading, setLoading] = useState(false);
@@ -125,6 +125,22 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
         setLoading(false);
     };
 
+    const handleStatusToggle = async () => {
+        if (!playerId) return;
+        setLoading(true);
+        try {
+            const player = players.find(p => p.id === playerId);
+            const newStatus = player?.status === 'defeated' ? 'active' : 'defeated';
+            await updatePlayerStatus(playerId, newStatus, room.room_code);
+            onClose();
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    const selectedPlayer = players.find(p => p.id === playerId);
+
     return (
         <Modal opened={opened} onClose={onClose} title="Bank Operations">
             <Stack gap="md">
@@ -135,27 +151,47 @@ function BankModal({ opened, onClose, room, players }: { opened: boolean; onClos
                     <Button variant={mode === 'from' ? 'filled' : 'light'} onClick={() => setMode('from')} leftSection={<IconArrowLeft size={16} />}>
                         Collect Money
                     </Button>
+                    <Button variant={mode === 'status' ? 'filled' : 'light'} onClick={() => setMode('status')} leftSection={<IconFlag size={16} />}>
+                        Status
+                    </Button>
                 </Group>
 
                 <Select
                     label="Player"
-                    data={players.map(p => ({ value: p.id, label: p.nickname }))}
+                    data={players.map(p => ({
+                        value: p.id,
+                        label: `${p.nickname}${p.status === 'defeated' ? ' (Defeated)' : ''}`
+                    }))}
                     value={playerId}
                     onChange={(val) => setPlayerId(val || '')}
                     required
                 />
 
-                <NumberInput
-                    label="Amount"
-                    value={amount}
-                    onChange={setAmount}
-                    min={0}
-                    required
-                />
+                {mode !== 'status' && (
+                    <>
+                        <NumberInput
+                            label="Amount"
+                            value={amount}
+                            onChange={setAmount}
+                            min={0}
+                            required
+                        />
 
-                <Button onClick={handleSubmit} loading={loading}>
-                    {mode === 'to' ? 'Give' : 'Collect'} ${amount}
-                </Button>
+                        <Button onClick={handleSubmit} loading={loading}>
+                            {mode === 'to' ? 'Give' : 'Collect'} ${amount}
+                        </Button>
+                    </>
+                )}
+
+                {mode === 'status' && selectedPlayer && (
+                    <Button
+                        onClick={handleStatusToggle}
+                        loading={loading}
+                        color={selectedPlayer.status === 'defeated' ? 'green' : 'red'}
+                    >
+                        {selectedPlayer.status === 'defeated' ? 'Restore Player' : 'Mark as Defeated'}
+                    </Button>
+                )}
             </Stack>
         </Modal>
     );

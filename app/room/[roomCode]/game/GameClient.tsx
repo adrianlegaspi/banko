@@ -1,6 +1,6 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea, Affix, Notification, Transition } from '@mantine/core';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition } from '@mantine/core';
 import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
@@ -10,6 +10,7 @@ import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
 import { createTransaction, createPaymentRequest, respondToPaymentRequest, rollDice } from '@/app/actions';
 import BankPanel from '@/components/BankPanel';
+import PlayerSelector from '@/components/PlayerSelector';
 
 type Transaction = any;
 
@@ -34,6 +35,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [activityPage, setActivityPage] = useState(0);
     const [toast, setToast] = useState<{ title: string, message: string, color: string } | null>(null);
     const playersRef = useRef(players);
+    const audioContextRef = useRef<AudioContext | null>(null);
 
     useEffect(() => {
         playersRef.current = players;
@@ -44,12 +46,25 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     // Memoize supabase client to prevent re-creation on every render
     const supabase = useMemo(() => createClient(), []);
 
+    // Initialize audio context on first user interaction
+    const initAudioContext = () => {
+        if (!audioContextRef.current) {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioContext) {
+                audioContextRef.current = new AudioContext();
+            }
+        }
+        if (audioContextRef.current?.state === 'suspended') {
+            audioContextRef.current.resume();
+        }
+    };
+
     const playNotificationSound = () => {
         try {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (!AudioContext) return;
+            initAudioContext();
+            if (!audioContextRef.current) return;
 
-            const ctx = new AudioContext();
+            const ctx = audioContextRef.current;
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
 
@@ -88,7 +103,36 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     if (data) setPlayers(data);
                 });
             })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions', filter: `room_id=eq.${room.id}` }, () => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions', filter: `room_id=eq.${room.id}` }, (payload: any) => {
+                const newTransaction = payload.new;
+
+                // Check if current player received money
+                if (newTransaction.to_player_id === currentPlayer.id) {
+                    // Play success sound
+                    const audio = new Audio('/assets/sounds/success.mp3');
+                    audio.volume = 0.5;
+                    audio.play().catch(e => console.error('Audio play failed', e));
+
+                    // Fetch transaction details to get sender info
+                    supabase
+                        .from('transactions')
+                        .select('*, from_player:players!from_player_id(nickname)')
+                        .eq('id', newTransaction.id)
+                        .single()
+                        .then(({ data }) => {
+                            if (data) {
+                                const fromName = data.from_player?.nickname || 'Bank';
+                                setToast({
+                                    title: 'Money Received! 💰',
+                                    message: `${fromName} sent you $${data.amount}`,
+                                    color: 'green'
+                                });
+                                setTimeout(() => setToast(null), 4000);
+                            }
+                        });
+                }
+
+                // Update transactions list
                 supabase.from('transactions').select('*, from_player:players!from_player_id(nickname), to_player:players!to_player_id(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
                     if (data) setTransactions(data);
                 });
@@ -143,6 +187,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     }, [room.id, room.room_code, supabase]);
 
     const myBalance = players.find(p => p.id === currentPlayer.id)?.current_balance || 0;
+    const isDefeated = currentPlayer.status === 'defeated';
 
     // Filter requests where I am the target (to_player_id is me OR null/QR) AND I am not the requester
     const myPendingRequests = paymentRequests.filter(pr =>
@@ -205,7 +250,12 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                             <Avatar color={currentPlayer.color} size="md" radius="xl">{currentPlayer.nickname[0]}</Avatar>
                             <Stack gap={0}>
                                 <Text size="xs" opacity={0.6} lh={1}>Card Holder</Text>
-                                <Text fw={600} size="lg">{currentPlayer.nickname}</Text>
+                                <Group gap="xs">
+                                    <Text fw={600} size="lg">{currentPlayer.nickname}</Text>
+                                    {isDefeated && (
+                                        <Badge size="sm" color="red" variant="filled">Defeated</Badge>
+                                    )}
+                                </Group>
                             </Stack>
                         </Group>
                         <Text size="xl" fw={700} style={{ opacity: 0.5, letterSpacing: '2px' }}>•••• {room.room_code}</Text>
@@ -213,81 +263,109 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 </Paper>
 
                 {/* Pending Requests Alert */}
-                {myPendingRequests.length > 0 && (
-                    <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
-                        <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
-                        <Stack gap="sm">
-                            {myPendingRequests.map(pr => (
-                                <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
-                                    <div>
-                                        <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
-                                        <Text size="xs" c="dimmed">{pr.description}</Text>
-                                    </div>
-                                    <Group gap="xs">
-                                        <Button size="xs" color="red" variant="subtle" onClick={async () => {
-                                            await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
-                                        }}>Reject</Button>
-                                        <Button size="xs" color="green" onClick={async () => {
-                                            await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
-                                        }}>Pay</Button>
+                {
+                    myPendingRequests.length > 0 && (
+                        <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
+                            <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
+                            <Stack gap="sm">
+                                {myPendingRequests.map(pr => (
+                                    <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                                        <div>
+                                            <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
+                                            <Text size="xs" c="dimmed">{pr.description}</Text>
+                                        </div>
+                                        <Group gap="xs">
+                                            <Button size="xs" color="red" variant="subtle" onClick={async () => {
+                                                await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
+                                            }}>Reject</Button>
+                                            <Button size="xs" color="green" onClick={async () => {
+                                                await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
+                                            }}>Pay</Button>
+                                        </Group>
                                     </Group>
-                                </Group>
-                            ))}
-                        </Stack>
-                    </Paper>
-                )}
+                                ))}
+                            </Stack>
+                        </Paper>
+                    )
+                }
 
                 {/* Action Buttons */}
-                <Stack gap="sm">
-                    <Group grow>
-                        <Button leftSection={<IconSend size={18} />} onClick={() => setSendModalOpen(true)}>
-                            Send
-                        </Button>
-                        <Button leftSection={<IconReceipt2 size={18} />} variant="light" onClick={() => setRequestModalOpen(true)}>
-                            Request
-                        </Button>
-                    </Group>
-                    <Group grow>
-                        <Button leftSection={<IconQrcode size={18} />} variant="outline" onClick={() => setQrModalOpen(true)}>
-                            QR Request
-                        </Button>
-                        <Button leftSection={<IconQrcode size={18} />} color="grape" onClick={() => setScanModalOpen(true)}>
-                            Scan
-                        </Button>
-                    </Group>
-                    <Button
-                        leftSection={<IconSquare size={18} />}
-                        color="orange"
-                        variant="light"
-                        onClick={async () => {
-                            setRolling(true);
-                            try {
-                                await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
-                            } catch (e) {
-                                console.error(e);
-                            }
-                            setRolling(false);
-                        }}
-                        loading={rolling}
-                    >
-                        Roll Dice (d{room.dice_sides || 12})
-                    </Button>
-                </Stack>
+                {
+                    !isDefeated && (
+                        <Stack gap="sm">
+                            <Group grow>
+                                <Button leftSection={<IconSend size={18} />} onClick={() => { initAudioContext(); setSendModalOpen(true); }}>
+                                    Send
+                                </Button>
+                                <Button leftSection={<IconReceipt2 size={18} />} variant="light" onClick={() => { initAudioContext(); setRequestModalOpen(true); }}>
+                                    Request
+                                </Button>
+                            </Group>
+                            <Group grow>
+                                <Button leftSection={<IconQrcode size={18} />} variant="outline" onClick={() => { initAudioContext(); setQrModalOpen(true); }}>
+                                    QR Request
+                                </Button>
+                                <Button leftSection={<IconQrcode size={18} />} color="grape" onClick={() => { initAudioContext(); setScanModalOpen(true); }}>
+                                    Scan
+                                </Button>
+                            </Group>
+                            <Button
+                                leftSection={<IconSquare size={18} />}
+                                color="orange"
+                                variant="light"
+                                onClick={async () => {
+                                    initAudioContext();
+                                    setRolling(true);
+                                    try {
+                                        await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                    setRolling(false);
+                                }}
+                                loading={rolling}
+                            >
+                                Roll Dice (d{room.dice_sides || 12})
+                            </Button>
+                        </Stack>
+                    )
+                }
+
+                {
+                    isDefeated && (
+                        <Paper p="xl" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-6)', backgroundColor: 'var(--mantine-color-red-9)' }}>
+                            <Stack align="center" gap="sm">
+                                <Text size="xl">💀</Text>
+                                <Text size="lg" fw={700} c="red" ta="center">Player Defeated</Text>
+                                <Text size="sm" c="dimmed" ta="center">You can no longer perform actions, but you can still view the game.</Text>
+                            </Stack>
+                        </Paper>
+                    )
+                }
 
                 {/* Bank Panel (Operator Only) */}
-                {currentPlayer.is_bank_operator && (
-                    <BankPanel room={room} players={players} />
-                )}
+                {
+                    currentPlayer.is_bank_operator && (
+                        <BankPanel room={room} players={players} />
+                    )
+                }
 
                 {/* Players List */}
                 <Paper p="md" radius="md" withBorder>
                     <Text fw={600} mb="sm">All Players</Text>
                     <Stack gap="xs">
                         {players.map((p) => (
-                            <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent' }}>
+                            <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent', opacity: p.status === 'defeated' ? 0.6 : 1 }}>
                                 <Group gap="sm">
                                     <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                    <Text size="sm" fw={500}>{p.nickname}</Text>
+                                    <div>
+                                        <Group gap="xs">
+                                            <Text size="sm" fw={500}>{p.nickname}</Text>
+                                            {p.status === 'defeated' && (
+                                                <Badge size="xs" color="red" variant="filled">Defeated</Badge>
+                                            )}
+                                        </Group>
+                                    </div>
                                 </Group>
                                 <Text size="sm" fw={600}>${p.current_balance}</Text>
                             </Group>
@@ -422,44 +500,48 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                         );
                     })()}
                 </Paper>
-            </Stack>
+            </Stack >
 
             {/* Send Money Modal */}
-            <Modal opened={sendModalOpen} onClose={() => setSendModalOpen(false)} title="Send Money">
+            < Modal opened={sendModalOpen} onClose={() => setSendModalOpen(false)
+            } title="Send Money" >
                 <SendMoneyForm
                     roomId={room.id}
+                    room={room}
                     players={players}
                     currentPlayerId={currentPlayer.id}
                     onClose={() => setSendModalOpen(false)}
+                    modalOpen={sendModalOpen}
                 />
-            </Modal>
+            </Modal >
 
             {/* Request Modal */}
-            <Modal opened={requestModalOpen} onClose={() => setRequestModalOpen(false)} title="Request Payment">
+            < Modal opened={requestModalOpen} onClose={() => setRequestModalOpen(false)} title="Request Payment" >
                 <RequestMoneyForm
                     roomId={room.id}
                     players={players}
                     currentPlayerId={currentPlayer.id}
                     onClose={() => setRequestModalOpen(false)}
+                    modalOpen={requestModalOpen}
                 />
-            </Modal>
+            </Modal >
 
             {/* QR Request Modal */}
-            <Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request">
+            < Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request" >
                 <QRRequestForm
                     roomCode={room.room_code}
                     currentPlayerId={currentPlayer.id}
                 />
-            </Modal>
+            </Modal >
 
             {/* Scan Modal */}
-            <Modal opened={scanModalOpen} onClose={() => setScanModalOpen(false)} title="Scan QR Code">
+            < Modal opened={scanModalOpen} onClose={() => setScanModalOpen(false)} title="Scan QR Code" >
                 <ScanQRForm
                     onClose={() => setScanModalOpen(false)}
                     roomId={room.id}
                     currentPlayerId={currentPlayer.id}
                 />
-            </Modal>
+            </Modal >
 
             <Affix position={{ bottom: 20, left: 0, right: 0 }} zIndex={1000} style={{ pointerEvents: 'none' }}>
                 <Container size="xs" style={{ pointerEvents: 'auto' }}>
@@ -474,9 +556,9 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                 bg="var(--mantine-color-dark-7)"
                             >
                                 <Group>
-                                    <Text size="xl">🎲</Text>
+                                    <Text size="xl">{toast?.color === 'green' ? '💰' : '🎲'}</Text>
                                     <div>
-                                        <Text fw={700} size="lg" c="orange">{toast?.title}</Text>
+                                        <Text fw={700} size="lg" c={toast?.color || 'orange'}>{toast?.title}</Text>
                                         <Text size="md">{toast?.message}</Text>
                                     </div>
                                 </Group>
@@ -645,17 +727,27 @@ function ScanQRForm({ onClose, roomId, currentPlayerId }: { onClose: () => void,
     );
 }
 
-function SendMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
-    const [amount, setAmount] = useState<number | string>('');
-    const [toPlayerId, setToPlayerId] = useState<string>('');
+function SendMoneyForm({ roomId, players, currentPlayerId, room, onClose, modalOpen }: any) {
+    const [amount, setAmount] = useState<number | string | null>(null);
+    const [toPlayerId, setToPlayerId] = useState<string | null>(null);
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Reset form when modal closes
+    useEffect(() => {
+        if (!modalOpen) {
+            setAmount(null);
+            setToPlayerId(null);
+            setDescription('');
+        }
+    }, [modalOpen]);
+
     const handleSend = async () => {
-        if (!toPlayerId || !amount) return;
+        if (toPlayerId === null || !amount) return;
         setLoading(true);
         try {
-            await createTransaction(roomId, 'player_to_player', Number(amount), description || 'Payment', currentPlayerId, toPlayerId);
+            const targetType = toPlayerId === null ? 'player_to_bank' : 'player_to_player';
+            await createTransaction(roomId, targetType, Number(amount), description || 'Payment', currentPlayerId, toPlayerId || undefined);
             onClose();
         } catch (error) {
             console.error(error);
@@ -665,18 +757,21 @@ function SendMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
 
     return (
         <Stack gap="md">
-            <Select
-                label="To Player"
-                placeholder="Select a player"
-                data={players.filter((p: Player) => p.id !== currentPlayerId).map((p: Player) => ({ value: p.id, label: p.nickname }))}
-                value={toPlayerId}
-                onChange={(val) => setToPlayerId(val || '')}
-                required
-            />
+            <div>
+                <Text size="sm" fw={500} mb="xs">Send to</Text>
+                <PlayerSelector
+                    players={players}
+                    currentPlayerId={currentPlayerId}
+                    selectedPlayerId={toPlayerId}
+                    onSelect={setToPlayerId}
+                    includeBank={true}
+                    room={room}
+                />
+            </div>
             <NumberInput
                 label="Amount"
                 placeholder="0"
-                value={amount}
+                value={amount === null ? '' : amount}
                 onChange={setAmount}
                 min={0}
                 required
@@ -687,18 +782,27 @@ function SendMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
                 value={description}
                 onChange={(e) => setDescription(e.currentTarget.value)}
             />
-            <Button onClick={handleSend} loading={loading} disabled={!toPlayerId || !amount}>
-                Send ${amount}
+            <Button onClick={handleSend} loading={loading} disabled={toPlayerId === null || !amount}>
+                Send ${amount || 0}
             </Button>
         </Stack>
     );
 }
 
-function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
-    const [amount, setAmount] = useState<number | string>(0);
-    const [fromPlayerId, setFromPlayerId] = useState<string>('');
+function RequestMoneyForm({ roomId, players, currentPlayerId, onClose, modalOpen }: any) {
+    const [amount, setAmount] = useState<number | string | null>(null);
+    const [fromPlayerId, setFromPlayerId] = useState<string | null>(null);
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Reset form when modal closes
+    useEffect(() => {
+        if (!modalOpen) {
+            setAmount(null);
+            setFromPlayerId(null);
+            setDescription('');
+        }
+    }, [modalOpen]);
 
     const handleRequest = async () => {
         if (!fromPlayerId || !amount) return;
@@ -714,18 +818,20 @@ function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
 
     return (
         <Stack gap="md">
-            <Select
-                label="Request From"
-                placeholder="Select a player"
-                data={players.filter((p: Player) => p.id !== currentPlayerId).map((p: Player) => ({ value: p.id, label: p.nickname }))}
-                value={fromPlayerId}
-                onChange={(val) => setFromPlayerId(val || '')}
-                required
-            />
+            <div>
+                <Text size="sm" fw={500} mb="xs">Request from</Text>
+                <PlayerSelector
+                    players={players}
+                    currentPlayerId={currentPlayerId}
+                    selectedPlayerId={fromPlayerId}
+                    onSelect={setFromPlayerId}
+                    includeBank={false}
+                />
+            </div>
             <NumberInput
                 label="Amount"
                 placeholder="0"
-                value={amount}
+                value={amount === null ? '' : amount}
                 onChange={setAmount}
                 min={0}
                 required
@@ -737,7 +843,7 @@ function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
                 onChange={(e) => setDescription(e.currentTarget.value)}
             />
             <Button onClick={handleRequest} loading={loading} disabled={!fromPlayerId || !amount}>
-                Request ${amount}
+                Request ${amount || 0}
             </Button>
         </Stack>
     );
