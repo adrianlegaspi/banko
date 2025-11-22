@@ -5,7 +5,7 @@ import { IconSend, IconReceipt2, IconQrcode } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
-import { createTransaction } from '@/app/actions';
+import { createTransaction, createPaymentRequest, respondToPaymentRequest } from '@/app/actions';
 import BankPanel from '@/components/BankPanel';
 
 type Transaction = any;
@@ -23,10 +23,21 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [sendModalOpen, setSendModalOpen] = useState(false);
     const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
 
     const supabase = createClient();
 
     useEffect(() => {
+        // Initial fetch of pending requests
+        supabase.from('payment_requests')
+            .select('*, from_player:players!from_player_id(nickname)')
+            .eq('room_id', room.id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .then(({ data }) => {
+                if (data) setPaymentRequests(data);
+            });
+
         const channel = supabase
             .channel('game')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${room.id}` }, () => {
@@ -38,6 +49,16 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 supabase.from('transactions').select('*, from_player:players!from_player_id(nickname), to_player:players!to_player_id(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
                     if (data) setTransactions(data);
                 });
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_requests', filter: `room_id=eq.${room.id}` }, () => {
+                supabase.from('payment_requests')
+                    .select('*, from_player:players!from_player_id(nickname)')
+                    .eq('room_id', room.id)
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                    .then(({ data }) => {
+                        if (data) setPaymentRequests(data);
+                    });
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, (payload: any) => {
                 if (payload.new.status === 'finished') {
@@ -52,6 +73,12 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     }, [room.id, room.room_code, supabase]);
 
     const myBalance = players.find(p => p.id === currentPlayer.id)?.current_balance || 0;
+
+    // Filter requests where I am the target (to_player_id is me OR null/QR) AND I am not the requester
+    const myPendingRequests = paymentRequests.filter(pr =>
+        (pr.to_player_id === currentPlayer.id || pr.to_player_id === null) &&
+        pr.from_player_id !== currentPlayer.id
+    );
 
     return (
         <Container size="md" py="md">
@@ -74,6 +101,31 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                         <Text c="white">{currentPlayer.nickname}</Text>
                     </Stack>
                 </Paper>
+
+                {/* Pending Requests Alert */}
+                {myPendingRequests.length > 0 && (
+                    <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
+                        <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
+                        <Stack gap="sm">
+                            {myPendingRequests.map(pr => (
+                                <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
+                                    <div>
+                                        <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
+                                        <Text size="xs" c="dimmed">{pr.description}</Text>
+                                    </div>
+                                    <Group gap="xs">
+                                        <Button size="xs" color="red" variant="subtle" onClick={async () => {
+                                            await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
+                                        }}>Reject</Button>
+                                        <Button size="xs" color="green" onClick={async () => {
+                                            await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
+                                        }}>Pay</Button>
+                                    </Group>
+                                </Group>
+                            ))}
+                        </Stack>
+                    </Paper>
+                )}
 
                 {/* Action Buttons */}
                 <Group grow>
@@ -136,9 +188,14 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 />
             </Modal>
 
-            {/* Request Modal - TBD */}
+            {/* Request Modal */}
             <Modal opened={requestModalOpen} onClose={() => setRequestModalOpen(false)} title="Request Payment">
-                <Text c="dimmed">Coming soon...</Text>
+                <RequestMoneyForm
+                    roomId={room.id}
+                    players={players}
+                    currentPlayerId={currentPlayer.id}
+                    onClose={() => setRequestModalOpen(false)}
+                />
             </Modal>
 
             {/* QR Modal - TBD */}
@@ -193,6 +250,55 @@ function SendMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
             />
             <Button onClick={handleSend} loading={loading} disabled={!toPlayerId || !amount}>
                 Send ${amount}
+            </Button>
+        </Stack>
+    );
+}
+
+function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
+    const [amount, setAmount] = useState<number | string>(0);
+    const [fromPlayerId, setFromPlayerId] = useState<string>('');
+    const [description, setDescription] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleRequest = async () => {
+        if (!fromPlayerId || !amount) return;
+        setLoading(true);
+        try {
+            await createPaymentRequest(roomId, currentPlayerId, Number(amount), description || 'Payment Request', fromPlayerId);
+            onClose();
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <Stack gap="md">
+            <Select
+                label="Request From"
+                placeholder="Select a player"
+                data={players.filter((p: Player) => p.id !== currentPlayerId).map((p: Player) => ({ value: p.id, label: p.nickname }))}
+                value={fromPlayerId}
+                onChange={(val) => setFromPlayerId(val || '')}
+                required
+            />
+            <NumberInput
+                label="Amount"
+                placeholder="0"
+                value={amount}
+                onChange={setAmount}
+                min={0}
+                required
+            />
+            <Textarea
+                label="Description (optional)"
+                placeholder="e.g. Rent for Boardwalk"
+                value={description}
+                onChange={(e) => setDescription(e.currentTarget.value)}
+            />
+            <Button onClick={handleRequest} loading={loading} disabled={!fromPlayerId || !amount}>
+                Request ${amount}
             </Button>
         </Stack>
     );

@@ -47,9 +47,11 @@ export default async function FinishPage({ params }: { params: { roomCode: strin
                         ))}
                     </Stack>
 
-                    <Button component={Link} href="/" size="lg" mt="md">
-                        Back to Home
-                    </Button>
+                    <Link href="/">
+                        <Button size="lg" mt="md">
+                            Back to Home
+                        </Button>
+                    </Link>
                 </Stack>
             </Paper>
         </Container>

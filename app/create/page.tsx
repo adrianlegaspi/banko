@@ -79,6 +79,7 @@ export default function CreateRoom() {
                     room_name: roomName,
                     bank_display_name: bankDisplayName,
                     initial_player_balance: initialBalance,
+                    salary_amount: parseFloat(formData.get('salaryAmount') as string),
                     status: 'lobby',
                     shared_pot_balance: 0
                 })
@@ -149,6 +150,15 @@ export default function CreateRoom() {
                             name="initialBalance"
                             label="Initial Player Balance"
                             defaultValue={1500}
+                            min={0}
+                            required
+                            disabled={submitting}
+                        />
+
+                        <NumberInput
+                            name="salaryAmount"
+                            label="Salary Amount (Pass Go)"
+                            defaultValue={200}
                             min={0}
                             required
                             disabled={submitting}

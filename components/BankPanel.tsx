@@ -14,7 +14,7 @@ type Props = {
 export default function BankPanel({ room, players }: Props) {
     const [bankModal, setBankModal] = useState(false);
     const [potModal, setPotModal] = useState(false);
-    const [salaryAmount] = useState(200); // Default salary
+    const [salaryModal, setSalaryModal] = useState(false);
 
     return (
         <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-yellow-6)' }}>
@@ -25,13 +25,8 @@ export default function BankPanel({ room, players }: Props) {
 
             <Stack gap="xs">
                 <Group grow>
-                    <Button size="xs" leftSection={<IconCoin size={16} />} onClick={() => {
-                        // Quick Pay Salary to all
-                        players.forEach((p) => {
-                            createTransaction(room.id, 'bank_to_player', salaryAmount, 'Salary', undefined, p.id);
-                        });
-                    }}>
-                        Pay Salary ($200)
+                    <Button size="xs" leftSection={<IconCoin size={16} />} onClick={() => setSalaryModal(true)}>
+                        Pay Salary (${room.salary_amount})
                     </Button>
                     <Button size="xs" variant="light" leftSection={<IconBuildingBank size={16} />} onClick={() => setBankModal(true)}>
                         Bank Ops
@@ -50,7 +45,44 @@ export default function BankPanel({ room, players }: Props) {
 
             <BankModal opened={bankModal} onClose={() => setBankModal(false)} room={room} players={players} />
             <PotModal opened={potModal} onClose={() => setPotModal(false)} room={room} players={players} />
+            <SalaryModal opened={salaryModal} onClose={() => setSalaryModal(false)} room={room} players={players} />
         </Paper>
+    );
+}
+
+function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
+    const [playerId, setPlayerId] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async () => {
+        if (!playerId) return;
+        setLoading(true);
+        try {
+            await createTransaction(room.id, 'bank_to_player', room.salary_amount, 'Salary', undefined, playerId);
+            onClose();
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title={`Pay Salary ($${room.salary_amount})`}>
+            <Stack gap="md">
+                <Select
+                    label="Select Player to Pay"
+                    placeholder="Choose player"
+                    data={players.map(p => ({ value: p.id, label: p.nickname }))}
+                    value={playerId}
+                    onChange={(val) => setPlayerId(val || '')}
+                    required
+                />
+
+                <Button onClick={handleSubmit} loading={loading} disabled={!playerId}>
+                    Pay ${room.salary_amount} to Player
+                </Button>
+            </Stack>
+        </Modal>
     );
 }
 

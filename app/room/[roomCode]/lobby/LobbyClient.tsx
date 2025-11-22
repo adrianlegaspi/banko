@@ -50,7 +50,20 @@ export default function LobbyClient({ room, currentPlayer, players: initialPlaye
                     <div>
                         <Group justify="space-between" mb="xs">
                             <Title order={2}>{room.room_name}</Title>
-                            <Badge size="lg" color="violet">{room.room_code}</Badge>
+                            <Group gap="xs">
+                                <Badge size="lg" color="violet">{room.room_code}</Badge>
+                                <Button
+                                    variant="light"
+                                    size="xs"
+                                    color="violet"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(room.room_code);
+                                        // Could add a toast here, but for MVP just copy is fine
+                                    }}
+                                >
+                                    Copy
+                                </Button>
+                            </Group>
                         </Group>
                         <Text c="dimmed">Share the room code with your friends!</Text>
                     </div>

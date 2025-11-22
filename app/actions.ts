@@ -10,8 +10,9 @@ export type Room = {
   id: string
   room_code: string
   room_name: string
-  initial_player_balance: number
   bank_display_name: string
+  initial_player_balance: number
+  salary_amount: number
   status: 'lobby' | 'in_progress' | 'finished'
   shared_pot_balance: number
   created_at: string
