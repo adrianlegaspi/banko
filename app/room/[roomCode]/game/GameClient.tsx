@@ -206,119 +206,124 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                             <Group key={p.id} justify="space-between" p="xs" style={{ borderRadius: 'var(--mantine-radius-sm)', background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-6)' : 'transparent' }}>
                                 <Group gap="sm">
                                     <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                    {(() => {
-                                        // Combine transactions and payment requests into unified activity feed
-                                        const allActivity = [
-                                            ...transactions.map((t: any) => ({
-                                                id: t.id,
-                                                type: 'transaction',
-                                                from: t.from_player?.nickname || 'Bank',
-                                                to: t.to_player?.nickname || 'Bank',
-                                                amount: t.amount,
-                                                description: t.description,
-                                                created_at: t.created_at
-                                            })),
-                                            ...paymentRequests
-                                                .filter((pr: any) => pr.status !== 'pending')
-                                                .map((pr: any) => ({
-                                                    id: pr.id,
-                                                    type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
-                                                    from: pr.from_player?.nickname || 'Unknown',
-                                                    to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
-                                                    amount: pr.amount,
-                                                    description: pr.description,
-                                                    created_at: pr.updated_at || pr.created_at
-                                                }))
-                                        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                                        const [activityPage, setActivityPage] = useState(0);
-                                        const itemsPerPage = 8;
-                                        const totalPages = Math.ceil(allActivity.length / itemsPerPage);
-                                        const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
-
-                                        return (
-                                            <>
-                                                <Stack gap="xs">
-                                                    {paginatedActivity.length === 0 ? (
-                                                        <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
-                                                    ) : (
-                                                        paginatedActivity.map((activity: any) => {
-                                                            const timestamp = new Date(activity.created_at);
-                                                            const now = new Date();
-                                                            const diffMs = now.getTime() - timestamp.getTime();
-                                                            const diffMins = Math.floor(diffMs / 60000);
-                                                            const diffHours = Math.floor(diffMins / 60);
-                                                            const diffDays = Math.floor(diffHours / 24);
-
-                                                            let timeAgo = '';
-                                                            if (diffDays > 0) {
-                                                                timeAgo = `${diffDays}d ago`;
-                                                            } else if (diffHours > 0) {
-                                                                timeAgo = `${diffHours}h ago`;
-                                                            } else if (diffMins > 0) {
-                                                                timeAgo = `${diffMins}m ago`;
-                                                            } else {
-                                                                timeAgo = 'Just now';
-                                                            }
-
-                                                            return (
-                                                                <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
-                                                                    <div style={{ flex: 1 }}>
-                                                                        <Text size="xs" c="dimmed">
-                                                                            {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
-                                                                            {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
-                                                                            {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
-                                                                        </Text>
-                                                                        {activity.description && (
-                                                                            <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
-                                                                        )}
-                                                                        <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
-                                                                            {timeAgo}
-                                                                        </Text>
-                                                                    </div>
-                                                                    <Text
-                                                                        size="xs"
-                                                                        fw={600}
-                                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
-                                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
-                                                                    >
-                                                                        ${activity.amount}
-                                                                    </Text>
-                                                                </Group>
-                                                            );
-                                                        })
-                                                    )}
-                                                </Stack>
-                                                {totalPages > 1 && (
-                                                    <Group justify="center" mt="sm" gap="xs">
-                                                        <Button
-                                                            size="xs"
-                                                            variant="subtle"
-                                                            onClick={() => setActivityPage(p => Math.max(0, p - 1))}
-                                                            disabled={activityPage === 0}
-                                                        >
-                                                            Previous
-                                                        </Button>
-                                                        <Text size="xs" c="dimmed">
-                                                            Page {activityPage + 1} of {totalPages}
-                                                        </Text>
-                                                        <Button
-                                                            size="xs"
-                                                            variant="subtle"
-                                                            onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
-                                                            disabled={activityPage === totalPages - 1}
-                                                        >
-                                                            Next
-                                                        </Button>
-                                                    </Group>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
+                                    <Text size="sm" fw={500}>{p.nickname}</Text>
                                 </Group>
+                                <Text size="sm" fw={600}>${p.current_balance}</Text>
                             </Group>
                         ))}
                     </Stack>
+                </Paper>
+
+                {/* Recent Activity */}
+                <Paper p="md" radius="md" withBorder>
+                    <Text fw={600} mb="sm">Recent Activity</Text>
+                    {(() => {
+                        const allActivity = [
+                            ...transactions.map((t: any) => ({
+                                id: t.id,
+                                type: 'transaction',
+                                from: t.from_player?.nickname || 'Bank',
+                                to: t.to_player?.nickname || 'Bank',
+                                amount: t.amount,
+                                description: t.description,
+                                created_at: t.created_at
+                            })),
+                            ...paymentRequests
+                                .filter((pr: any) => pr.status !== 'pending')
+                                .map((pr: any) => ({
+                                    id: pr.id,
+                                    type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
+                                    from: pr.from_player?.nickname || 'Unknown',
+                                    to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
+                                    amount: pr.amount,
+                                    description: pr.description,
+                                    created_at: pr.updated_at || pr.created_at
+                                }))
+                        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                        const itemsPerPage = 8;
+                        const totalPages = Math.ceil(allActivity.length / itemsPerPage);
+                        const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
+
+                        return (
+                            <>
+                                <Stack gap="xs">
+                                    {paginatedActivity.length === 0 ? (
+                                        <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
+                                    ) : (
+                                        paginatedActivity.map((activity: any) => {
+                                            const timestamp = new Date(activity.created_at);
+                                            const now = new Date();
+                                            const diffMs = now.getTime() - timestamp.getTime();
+                                            const diffMins = Math.floor(diffMs / 60000);
+                                            const diffHours = Math.floor(diffMins / 60);
+                                            const diffDays = Math.floor(diffHours / 24);
+
+                                            let timeAgo = '';
+                                            if (diffDays > 0) {
+                                                timeAgo = `${diffDays}d ago`;
+                                            } else if (diffHours > 0) {
+                                                timeAgo = `${diffHours}h ago`;
+                                            } else if (diffMins > 0) {
+                                                timeAgo = `${diffMins}m ago`;
+                                            } else {
+                                                timeAgo = 'Just now';
+                                            }
+
+                                            return (
+                                                <Group key={activity.id} justify="space-between" p="xs" style={{ fontSize: '0.85rem' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <Text size="xs" c="dimmed">
+                                                            {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
+                                                            {activity.type === 'request_accepted' && `✓ ${activity.from} → ${activity.to}`}
+                                                            {activity.type === 'request_rejected' && `✗ ${activity.from} ⇢ ${activity.to}`}
+                                                        </Text>
+                                                        {activity.description && (
+                                                            <Text size="xs" c="dimmed" opacity={0.6}>{activity.description}</Text>
+                                                        )}
+                                                        <Text size="xs" c="dimmed" opacity={0.5} style={{ fontSize: '0.7rem' }}>
+                                                            {timeAgo}
+                                                        </Text>
+                                                    </div>
+                                                    <Text
+                                                        size="xs"
+                                                        fw={600}
+                                                        c={activity.type === 'request_rejected' ? 'red' : undefined}
+                                                        style={{ textDecoration: activity.type === 'request_rejected' ? 'line-through' : 'none' }}
+                                                    >
+                                                        ${activity.amount}
+                                                    </Text>
+                                                </Group>
+                                            );
+                                        })
+                                    )}
+                                </Stack>
+                                {totalPages > 1 && (
+                                    <Group justify="center" mt="sm" gap="xs">
+                                        <Button
+                                            size="xs"
+                                            variant="subtle"
+                                            onClick={() => setActivityPage(p => Math.max(0, p - 1))}
+                                            disabled={activityPage === 0}
+                                        >
+                                            Previous
+                                        </Button>
+                                        <Text size="xs" c="dimmed">
+                                            Page {activityPage + 1} of {totalPages}
+                                        </Text>
+                                        <Button
+                                            size="xs"
+                                            variant="subtle"
+                                            onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
+                                            disabled={activityPage === totalPages - 1}
+                                        >
+                                            Next
+                                        </Button>
+                                    </Group>
+                                )}
+                            </>
+                        );
+                    })()}
                 </Paper>
             </Stack>
 
@@ -487,7 +492,7 @@ function ScanQRForm({ onClose }: { onClose: () => void }) {
 }
 
 function SendMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
-    const [amount, setAmount] = useState<number | string>(0);
+    const [amount, setAmount] = useState<number | string>('');
     const [toPlayerId, setToPlayerId] = useState<string>('');
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
