@@ -303,3 +303,20 @@ export async function getTransactions(roomId: string) {
     .limit(50)
   return data
 }
+export async function createGuestAccount() {
+  const adminAuthClient = createAdminClient()
+  
+  const randomId = Math.random().toString(36).substring(2, 15)
+  const email = `guest_${randomId}@banko.app`
+  const password = `banko_guest_${Math.random().toString(36).substring(2)}`
+
+  const { data, error } = await adminAuthClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true
+  })
+
+  if (error) throw new Error(error.message)
+  
+  return { email, password }
+}

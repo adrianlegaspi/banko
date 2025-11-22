@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 
+import { signInAsGuest } from '@/utils/auth';
+
 export default function Home() {
   const [loading, setLoading] = useState(true);
 
@@ -14,7 +16,7 @@ export default function Home() {
     const signIn = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        await supabase.auth.signInAnonymously();
+        await signInAsGuest(supabase);
       }
       setLoading(false);
     };

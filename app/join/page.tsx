@@ -18,6 +18,8 @@ const COLORS = [
     { value: 'pink', label: 'Pink' },
 ];
 
+import { signInAsGuest } from '@/utils/auth';
+
 export default function JoinRoom() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -29,7 +31,12 @@ export default function JoinRoom() {
         const checkAuth = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                await supabase.auth.signInAnonymously();
+                const { error } = await signInAsGuest(supabase);
+                if (error) {
+                    setError('Failed to authenticate. Please refresh.');
+                    setLoading(false);
+                    return;
+                }
             }
             setLoading(false);
         };
