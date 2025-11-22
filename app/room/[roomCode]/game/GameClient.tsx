@@ -1,14 +1,14 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload } from '@tabler/icons-react';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon, Tabs, ScrollArea, TextInput, SegmentedControl } from '@mantine/core';
+import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
-import { createTransaction, createPaymentRequest, respondToPaymentRequest, rollDice } from '@/app/actions';
+import { createTransaction, createPaymentRequest, respondToPaymentRequest, rollDice, getLoans, repayLoan } from '@/app/actions';
 import BankPanel from '@/components/BankPanel';
 import PlayerSelector from '@/components/PlayerSelector';
 
@@ -30,6 +30,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [requestModalOpen, setRequestModalOpen] = useState(false);
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const [scanModalOpen, setScanModalOpen] = useState(false);
+    const [bankServicesModalOpen, setBankServicesModalOpen] = useState(false);
     const [defaultRecipientId, setDefaultRecipientId] = useState<string | null>(null);
     const [defaultRequestPayerId, setDefaultRequestPayerId] = useState<string | null>(null);
     const [rolling, setRolling] = useState(false);
@@ -388,6 +389,24 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                 <Text fw={600} c="white">Scan</Text>
                                             </Stack>
                                         </Paper>
+
+                                        <Paper
+                                            p="md"
+                                            radius="md"
+                                            style={{
+                                                background: 'linear-gradient(135deg, var(--mantine-color-teal-6) 0%, var(--mantine-color-green-6) 100%)',
+                                                cursor: 'pointer',
+                                                transition: 'transform 0.2s ease'
+                                            }}
+                                            onClick={() => { initAudioContext(); setBankServicesModalOpen(true); }}
+                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            <Stack align="center" gap="xs">
+                                                <IconBuildingBank size={32} color="white" />
+                                                <Text fw={600} c="white">Bank Services</Text>
+                                            </Stack>
+                                        </Paper>
                                     </SimpleGrid>
 
                                     <Button
@@ -650,6 +669,13 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     initialPayerId={defaultRequestPayerId}
                 />
             </Modal >
+
+            <BankServicesModal
+                opened={bankServicesModalOpen}
+                onClose={() => setBankServicesModalOpen(false)}
+                room={room}
+                currentPlayer={currentPlayer}
+            />
 
             {/* QR Request Modal */}
             < Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request" >
@@ -1025,5 +1051,148 @@ function QRRequestForm({ roomCode, currentPlayerId }: { roomCode: string, curren
                 </Text>
             )}
         </Stack>
+    );
+}
+
+function BankServicesModal({ opened, onClose, room, currentPlayer }: { opened: boolean; onClose: () => void; room: Room; currentPlayer: Player }) {
+    const [activeTab, setActiveTab] = useState<string | null>('loans');
+    const [loans, setLoans] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    // Property Improvement State
+    const [amount, setAmount] = useState<number | string | null>(null);
+    const [description, setDescription] = useState('Property Improvement');
+    const [payLoading, setPayLoading] = useState(false);
+
+    const fetchLoans = async () => {
+        setLoading(true);
+        try {
+            const data = await getLoans(room.id);
+            // Filter for current player
+            setLoans(data?.filter((l: any) => l.player_id === currentPlayer.id) || []);
+        } catch (error) {
+            console.error(error);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        if (opened) {
+            fetchLoans();
+        }
+    }, [opened]);
+
+    const handleRepay = async (loanId: string, repayAmount: number) => {
+        if (!confirm(`Repay $${repayAmount}?`)) return;
+        try {
+            await repayLoan(loanId, repayAmount, room.id);
+            fetchLoans();
+        } catch (error) {
+            console.error(error);
+            alert('Repayment failed. Check funds.');
+        }
+    };
+
+    const handlePayBank = async () => {
+        if (!amount) return;
+        setPayLoading(true);
+        try {
+            await createTransaction(room.id, 'player_to_bank', Number(amount), description, currentPlayer.id, undefined);
+            setAmount(null);
+            setDescription('Property Improvement');
+            onClose();
+        } catch (error) {
+            console.error(error);
+            alert('Payment failed. Check funds.');
+        }
+        setPayLoading(false);
+    };
+
+    return (
+        <Modal opened={opened} onClose={onClose} title="Bank Services" size="lg">
+            <Tabs value={activeTab} onChange={setActiveTab}>
+                <Tabs.List mb="md">
+                    <Tabs.Tab value="loans" leftSection={<IconCoin size={16} />}>
+                        My Loans
+                    </Tabs.Tab>
+                    <Tabs.Tab value="improvements" leftSection={<IconBuildingEstate size={16} />}>
+                        Property Improvements
+                    </Tabs.Tab>
+                </Tabs.List>
+
+                <Tabs.Panel value="loans">
+                    <Stack gap="md">
+                        <Group justify="flex-end">
+                            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchLoans} loading={loading}>
+                                Refresh
+                            </Button>
+                        </Group>
+
+                        {loans.length === 0 ? (
+                            <Text c="dimmed" ta="center" py="xl">You have no active loans.</Text>
+                        ) : (
+                            <ScrollArea h={300}>
+                                <Stack gap="sm">
+                                    {loans.map((loan) => (
+                                        <Paper key={loan.id} p="sm" withBorder>
+                                            <Group justify="space-between" align="flex-start">
+                                                <div>
+                                                    <Text fw={600}>{loan.description}</Text>
+                                                    <Text size="xs" c="dimmed">{new Date(loan.created_at).toLocaleDateString()}</Text>
+                                                </div>
+                                                <Stack align="flex-end" gap="xs">
+                                                    <Text fw={700} size="lg" c="red">-${loan.amount}</Text>
+                                                    <Button size="xs" variant="light" color="blue" onClick={() => handleRepay(loan.id, loan.amount)}>
+                                                        Repay Full
+                                                    </Button>
+                                                </Stack>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            </ScrollArea>
+                        )}
+                    </Stack>
+                </Tabs.Panel>
+
+                <Tabs.Panel value="improvements">
+                    <Stack gap="md">
+                        <Paper p="sm" radius="md" style={{ background: 'var(--mantine-color-blue-9)' }}>
+                            <Group>
+                                <IconBuildingEstate color="white" />
+                                <Text size="sm" c="white">Pay the bank for houses, hotels, or other property improvements.</Text>
+                            </Group>
+                        </Paper>
+
+                        <NumberInput
+                            label="Payment Amount"
+                            placeholder="0"
+                            value={amount === null ? '' : amount}
+                            onChange={setAmount}
+                            min={0}
+                            leftSection={<IconCoin size={16} />}
+                        />
+
+                        <TextInput
+                            label="Description"
+                            placeholder="e.g. 3 Houses on Boardwalk"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                        />
+
+                        <Button
+                            fullWidth
+                            size="lg"
+                            color="blue"
+                            onClick={handlePayBank}
+                            loading={payLoading}
+                            disabled={!amount}
+                        >
+                            Pay Bank ${amount || 0}
+                        </Button>
+                    </Stack>
+                </Tabs.Panel>
+            </Tabs>
+        </Modal>
     );
 }
