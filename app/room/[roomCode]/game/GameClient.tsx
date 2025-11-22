@@ -1,11 +1,11 @@
 'use client'
 
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea } from '@mantine/core';
+import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Select, Textarea, Affix, Notification, Transition } from '@mantine/core';
 import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh } from '@tabler/icons-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
 import { createTransaction, createPaymentRequest, respondToPaymentRequest, rollDice } from '@/app/actions';
@@ -32,9 +32,43 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const [rolling, setRolling] = useState(false);
     const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
     const [activityPage, setActivityPage] = useState(0);
+    const [toast, setToast] = useState<{ title: string, message: string, color: string } | null>(null);
+    const playersRef = useRef(players);
+
+    useEffect(() => {
+        playersRef.current = players;
+    }, [players]);
+
     const router = useRouter();
 
-    const supabase = createClient();
+    // Memoize supabase client to prevent re-creation on every render
+    const supabase = useMemo(() => createClient(), []);
+
+    const playNotificationSound = () => {
+        try {
+            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContext) return;
+
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(500, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.1);
+
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+            osc.start();
+            osc.stop(ctx.currentTime + 0.5);
+        } catch (e) {
+            console.error("Audio play failed", e);
+        }
+    };
 
     useEffect(() => {
         // Initial fetch of pending requests
@@ -74,12 +108,34 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     window.location.href = `/room/${room.room_code}/finish`;
                 }
             })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_events', filter: `room_id=eq.${room.id}` }, () => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_events', filter: `room_id=eq.${room.id}` }, (payload: any) => {
+                console.log('Game Event Received:', payload);
+                // Show Toast
+                const newEvent = payload.new;
+                if (newEvent.event_type === 'dice_roll') {
+                    const player = playersRef.current.find(p => p.id === newEvent.player_id);
+                    const nickname = player ? player.nickname : 'Unknown Player';
+                    const roll = newEvent.payload.roll;
+                    const sides = newEvent.payload.sides;
+
+                    setToast({
+                        title: 'Dice Roll!',
+                        message: `${nickname} rolled a ${roll} (d${sides})`,
+                        color: 'orange'
+                    });
+
+                    playNotificationSound();
+
+                    setTimeout(() => setToast(null), 4000);
+                }
+
                 supabase.from('game_events').select('*, player:players(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
                     if (data) setGameEvents(data);
                 });
             })
-            .subscribe();
+            .subscribe((status) => {
+                console.log('Realtime Subscription Status:', status);
+            });
 
         return () => {
             supabase.removeChannel(channel);
@@ -404,6 +460,31 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                     currentPlayerId={currentPlayer.id}
                 />
             </Modal>
+
+            <Affix position={{ bottom: 20, left: 0, right: 0 }} zIndex={1000} style={{ pointerEvents: 'none' }}>
+                <Container size="xs" style={{ pointerEvents: 'auto' }}>
+                    <Transition transition="slide-up" mounted={!!toast}>
+                        {(styles) => (
+                            <Paper
+                                style={styles}
+                                p="lg"
+                                radius="md"
+                                withBorder
+                                shadow="xl"
+                                bg="var(--mantine-color-dark-7)"
+                            >
+                                <Group>
+                                    <Text size="xl">🎲</Text>
+                                    <div>
+                                        <Text fw={700} size="lg" c="orange">{toast?.title}</Text>
+                                        <Text size="md">{toast?.message}</Text>
+                                    </div>
+                                </Group>
+                            </Paper>
+                        )}
+                    </Transition>
+                </Container>
+            </Affix>
         </Container >
     );
 }
@@ -664,11 +745,6 @@ function RequestMoneyForm({ roomId, players, currentPlayerId, onClose }: any) {
 
 function QRRequestForm({ roomCode, currentPlayerId }: { roomCode: string, currentPlayerId: string }) {
     const [amount, setAmount] = useState<number | string>('');
-
-    // Construct the URL: /room/[code]/pay?to=[id]&amount=[amount]
-    // We use window.location.origin to get the full URL if on client, but for SSR safety we can just use relative or construct it carefully.
-    // Since this is a client component, window is available.
-
     const [qrUrl, setQrUrl] = useState('');
 
     useEffect(() => {
