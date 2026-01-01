@@ -17,7 +17,7 @@
     "@types/react-window": "^1.8.8",
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
-    "next": "16.0.3",
+    "next": "16.0.10",
     "qrcode.react": "^4.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
