@@ -1,779 +1,567 @@
-'use client'
-
-import { Paper, Title, Stack, Group, Button, NumberInput, Modal, Text, Badge, SimpleGrid, SegmentedControl, Tabs, ScrollArea, TextInput, ActionIcon } from '@mantine/core';
-import { IconCoin, IconArrowRight, IconArrowLeft, IconBuildingBank, IconFlag, IconUsers, IconTrophy, IconBuildingEstate, IconRefresh, IconHistory, IconArrowBack } from '@tabler/icons-react';
+'use client';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect, useState } from 'react';
+import {
+  Coins,
+  ArrowLeftRight,
+  Trophy,
+  Users,
+  Landmark,
+  History,
+  Flag,
+  ArrowRight,
+  Undo2,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Virtuoso } from 'react-virtuoso';
-import { useState, useEffect } from 'react';
-import type { Player, Room } from '@/app/actions';
-import { createTransaction, finishGame, updatePlayerStatus, createLoan, repayLoan, getLoans, getTransactions, revertTransaction } from '@/app/actions';
-import PlayerSelector from './PlayerSelector';
-
-type Props = {
-    room: Room;
-    players: Player[];
-};
-
-export default function BankPanel({ room, players }: Props) {
-    const [bankModal, setBankModal] = useState(false);
-    const [potModal, setPotModal] = useState(false);
-    const [salaryModal, setSalaryModal] = useState(false);
-    const [playerModal, setPlayerModal] = useState(false);
-    const [historyModal, setHistoryModal] = useState(false);
-
-    const [loansModal, setLoansModal] = useState(false);
-    const [endGameModal, setEndGameModal] = useState(false);
-
-    return (
-        <Paper p="xl" radius="lg" withBorder style={{
-            borderColor: 'var(--mantine-color-dark-4)',
-            background: 'linear-gradient(135deg, var(--mantine-color-dark-7) 0%, var(--mantine-color-dark-8) 100%)'
-        }}>
-            <Stack gap="md">
-                {/* Header */}
-                <Group justify="space-between" mb="xs">
-                    <Group gap="sm">
-                        <IconBuildingBank size={28} style={{ color: 'var(--mantine-color-blue-3)' }} />
-                        <Title order={3} style={{ color: 'var(--mantine-color-blue-3)' }}>
-                            {room.bank_display_name}
-                        </Title>
-                    </Group>
-                    <Paper p="md" radius="md" style={{
-                        background: 'linear-gradient(135deg, var(--mantine-color-grape-9) 0%, var(--mantine-color-grape-7) 100%)',
-                        minWidth: '140px'
-                    }}>
-                        <Stack gap={0} align="center">
-                            <Text size="xs" c="white" opacity={0.7}>Shared Pot</Text>
-                            <Text size="xl" fw={700} c="white">${room.shared_pot_balance || 0}</Text>
-                        </Stack>
-                    </Paper>
-                </Group>
-
-                {/* Main Actions Grid */}
-                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                    {/* Pay Salary */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-blue-9) 0%, var(--mantine-color-blue-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setSalaryModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconCoin size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Pay Salary</Text>
-                            <Text size="xs" c="white" opacity={0.7}>${room.salary_amount}</Text>
-                        </Stack>
-                    </Paper>
-
-                    {/* Bank Transfers */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-cyan-9) 0%, var(--mantine-color-cyan-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setBankModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconArrowRight size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Bank Transfers</Text>
-                            <Text size="xs" c="white" opacity={0.7}>Give / Collect</Text>
-                        </Stack>
-                    </Paper>
-
-                    {/* Pot Operations */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-grape-9) 0%, var(--mantine-color-grape-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setPotModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconTrophy size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Pot Operations</Text>
-                            <Text size="xs" c="white" opacity={0.7}>Manage Pot</Text>
-                        </Stack>
-                    </Paper>
-
-                    {/* Player Status */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-orange-9) 0%, var(--mantine-color-orange-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setPlayerModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconUsers size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Player Status</Text>
-                            <Text size="xs" c="white" opacity={0.7}>Active / Defeated</Text>
-                        </Stack>
-                    </Paper>
-
-                    {/* Loans & Mortgages */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-teal-9) 0%, var(--mantine-color-teal-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setLoansModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconBuildingEstate size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Loans & Mortgages</Text>
-                            <Text size="xs" c="white" opacity={0.7}>Issue / Repay</Text>
-                        </Stack>
-                    </Paper>
-
-                    {/* Transaction History */}
-                    <Paper
-                        p="lg"
-                        radius="md"
-                        style={{
-                            background: 'linear-gradient(135deg, var(--mantine-color-indigo-9) 0%, var(--mantine-color-indigo-7) 100%)',
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s ease',
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        onClick={() => setHistoryModal(true)}
-                    >
-                        <Stack align="center" gap="xs">
-                            <IconHistory size={32} style={{ color: 'white' }} />
-                            <Text size="sm" fw={600} c="white" ta="center">Transaction History</Text>
-                            <Text size="xs" c="white" opacity={0.7}>View / Revert</Text>
-                        </Stack>
-                    </Paper>
-                </SimpleGrid>
-
-                {/* End Game - Danger Zone */}
-                <Paper p="sm" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-8)', backgroundColor: 'var(--mantine-color-red-9)' }}>
-                    <Button
-                        fullWidth
-                        size="sm"
-                        color="red"
-                        variant="subtle"
-                        leftSection={<IconFlag size={16} />}
-                        onClick={() => setEndGameModal(true)}
-                    >
-                        End Game
-                    </Button>
-                </Paper>
-            </Stack>
-
-            <BankModal opened={bankModal} onClose={() => setBankModal(false)} room={room} players={players} />
-            <PotModal opened={potModal} onClose={() => setPotModal(false)} room={room} players={players} />
-            <SalaryModal opened={salaryModal} onClose={() => setSalaryModal(false)} room={room} players={players} />
-
-            <PlayerStatusModal opened={playerModal} onClose={() => setPlayerModal(false)} room={room} players={players} />
-            <LoansModal opened={loansModal} onClose={() => setLoansModal(false)} room={room} players={players} />
-            <TransactionHistoryModal opened={historyModal} onClose={() => setHistoryModal(false)} room={room} players={players} />
-
-            <Modal opened={endGameModal} onClose={() => setEndGameModal(false)} title="End Game Confirmation">
-                <Stack>
-                    <Text>Are you sure you want to end the game? This action cannot be undone.</Text>
-                    <Group grow>
-                        <Button variant="default" onClick={() => setEndGameModal(false)}>Cancel</Button>
-                        <Button color="red" onClick={() => finishGame(room.room_code)}>End Game</Button>
-                    </Group>
-                </Stack>
-            </Modal>
-        </Paper>
-    );
-}
-
-function SalaryModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [playerId, setPlayerId] = useState('');
-    const [loading, setLoading] = useState(false);
-
-    const handleSubmit = async () => {
-        if (!playerId) return;
-        setLoading(true);
-        try {
-            await createTransaction(room.id, 'bank_to_player', room.salary_amount, 'Salary', undefined, playerId);
-            onClose();
-        } catch (error) {
-            console.error(error);
+import {
+  createTransaction,
+  finishGame,
+  updatePlayerStatus,
+  createLoan,
+  repayLoan,
+  getLoans,
+  getTransactions,
+  revertTransaction,
+  type Room,
+  type Player,
+} from '@/app/actions';
+import type { Loan, Transaction } from '@/lib/game-types';
+import { formatMoney } from '@/lib/player-colors';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import OperationSheet from '@/components/OperationSheet';
+import PlayerSelector from '@/components/PlayerSelector';
+type BankOperation =
+  'salary' | 'transfer' | 'pot' | 'players' | 'loans' | 'history' | 'end';
+const operations = [
+  {
+    value: 'salary',
+    title: 'Pay salary',
+    description: 'A little reward for passing Go',
+    icon: Coins,
+  },
+  {
+    value: 'transfer',
+    title: 'Bank transfers',
+    description: 'Give money or collect a payment',
+    icon: ArrowLeftRight,
+  },
+  {
+    value: 'pot',
+    title: 'Shared pot',
+    description: 'Add to the pot or pay it out',
+    icon: Trophy,
+  },
+  {
+    value: 'players',
+    title: 'Player status',
+    description: 'Manage defeated and active players',
+    icon: Users,
+  },
+  {
+    value: 'loans',
+    title: 'Loans & mortgages',
+    description: 'Issue loans and track repayments',
+    icon: Landmark,
+  },
+  {
+    value: 'history',
+    title: 'Transaction history',
+    description: 'Review and reverse transactions',
+    icon: History,
+  },
+] as const;
+export default function BankPanel({
+  room,
+  players,
+}: {
+  room: Room;
+  players: Player[];
+}) {
+  const [operation, setOperation] = useState<BankOperation | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [direction, setDirection] = useState('give');
+  const [pending, setPending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [confirmation, setConfirmation] = useState<{
+    kind: 'repay' | 'reverse';
+    id: string;
+    amount: number;
+  } | null>(null);
+  const selectedPlayer = players.find((player) => player.id === playerId);
+  useEffect(() => {
+    if (operation !== 'loans' && operation !== 'history') return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      try {
+        if (operation === 'loans') {
+          const result = await getLoans(room.id);
+          if (active) setLoans(result ?? []);
+        } else {
+          const result = await getTransactions(room.id);
+          if (active) setTransactions(result ?? []);
         }
-        setLoading(false);
+      } catch (failure) {
+        if (active)
+          setError(
+            failure instanceof Error
+              ? failure.message
+              : 'Could not load records.',
+          );
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      active = false;
     };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title={`Pay Salary ($${room.salary_amount})`}>
-            <Stack gap="md">
-                <Text size="sm" c="dimmed" mb="xs">Select a player to send the salary to:</Text>
-                <PlayerSelector
-                    players={players}
-                    currentPlayerId="bank"
-                    room={room}
-                    selectedPlayerId={playerId}
-                    onSelect={(val) => setPlayerId(val || '')}
+  }, [operation, room.id]);
+  async function execute(action: () => Promise<unknown>, close = true) {
+    setPending(true);
+    setError('');
+    try {
+      await action();
+      toast.success('Bank updated');
+      if (close) setOperation(null);
+    } catch (failure) {
+      if (failure instanceof Error && failure.message === 'NEXT_REDIRECT')
+        throw failure;
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'Operation failed. Try again.',
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function submit() {
+    if (!operation) return;
+    if (operation === 'end') {
+      await execute(() => finishGame(room.room_code));
+      return;
+    }
+    if (!playerId) {
+      setError('Choose a player first.');
+      return;
+    }
+    if (operation === 'players') {
+      await execute(() =>
+        updatePlayerStatus(
+          playerId,
+          selectedPlayer?.status === 'defeated' ? 'active' : 'defeated',
+          room.room_code,
+        ),
+      );
+      return;
+    }
+    if (
+      operation !== 'salary' &&
+      (!Number.isFinite(Number(amount)) || Number(amount) <= 0)
+    ) {
+      setError('Enter an amount greater than zero.');
+      return;
+    }
+    if (operation === 'loans') {
+      await execute(() =>
+        createLoan(room.id, playerId, Number(amount), description || 'Loan'),
+      );
+      return;
+    }
+    const transactionType =
+      operation === 'salary'
+        ? 'bank_to_player'
+        : operation === 'pot'
+          ? direction === 'give'
+            ? 'pot_out'
+            : 'pot_in'
+          : direction === 'give'
+            ? 'bank_to_player'
+            : 'player_to_bank';
+    const outgoing =
+      transactionType === 'player_to_bank' || transactionType === 'pot_in';
+    await execute(() =>
+      createTransaction(
+        room.id,
+        transactionType,
+        operation === 'salary' ? room.salary_amount : Number(amount),
+        operation === 'salary'
+          ? 'Salary'
+          : operation === 'pot'
+            ? outgoing
+              ? 'Added to Pot'
+              : 'Collected from Pot'
+            : 'Bank Transfer',
+        outgoing ? playerId : undefined,
+        outgoing ? undefined : playerId,
+      ),
+    );
+  }
+  return (
+    <section>
+      <div className="section-heading">
+        <div>
+          <h2>{room.bank_display_name}</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your table. Your banker controls.
+          </p>
+        </div>
+        <span className="money text-primary">
+          Pot {formatMoney(room.shared_pot_balance)}
+        </span>
+      </div>
+      <div className="bank-tools">
+        {operations.map((bankOperation) => (
+          <button
+            type="button"
+            className="bank-tool"
+            key={bankOperation.value}
+            onClick={() => {
+              setOperation(bankOperation.value);
+              setPlayerId(null);
+              setAmount('');
+              setDescription('');
+              setDirection('give');
+              setError('');
+              setConfirmation(null);
+            }}
+          >
+            <bankOperation.icon size={24} />
+            <span>
+              <strong className="block">{bankOperation.title}</strong>
+              <span className="block text-sm text-muted-foreground mt-1">
+                {bankOperation.description}
+              </span>
+            </span>
+            <ArrowRight className="ml-auto" size={18} />
+          </button>
+        ))}
+      </div>
+      <Button
+        variant="ghost"
+        className="mt-6 text-destructive"
+        onClick={() => {
+          setOperation('end');
+          setError('');
+        }}
+      >
+        <Flag /> End game
+      </Button>
+      <OperationSheet
+        open={operation !== null}
+        onClose={() => {
+          if (!pending) setOperation(null);
+        }}
+        title={
+          operation === 'end'
+            ? 'End this game?'
+            : (operations.find(
+                (bankOperation) => bankOperation.value === operation,
+              )?.title ?? 'Bank')
+        }
+      >
+        <div className="form-stack">
+          {error && (
+            <p className="error-message" role="alert">
+              {error}
+            </p>
+          )}
+          {operation === 'history' && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                All room transactions. Reversals create a new reversing
+                transaction.
+              </p>
+              {loading ? (
+                <Skeleton
+                  className="h-24 w-full"
+                  role="status"
+                  aria-label="Loading history"
                 />
-
-                <Button
-                    size="lg"
-                    fullWidth
-                    onClick={handleSubmit}
-                    loading={loading}
-                    disabled={!playerId}
-                    color="blue"
-                >
-                    Pay ${room.salary_amount} to Player
-                </Button>
-            </Stack>
-        </Modal>
-    );
-}
-
-function BankModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [mode, setMode] = useState<'to' | 'from'>('to');
-    const [amount, setAmount] = useState<number | string | null>(null);
-    const [playerId, setPlayerId] = useState('');
-    const [loading, setLoading] = useState(false);
-
-    const handleSubmit = async () => {
-        if (!playerId || !amount) return;
-        setLoading(true);
-        try {
-            if (mode === 'to') {
-                await createTransaction(room.id, 'bank_to_player', Number(amount), 'Bank Transfer', undefined, playerId);
-            } else {
-                await createTransaction(room.id, 'player_to_bank', Number(amount), 'Bank Collection', playerId, undefined);
-            }
-            onClose();
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Bank Transfers">
-            <Stack gap="md">
-                <SegmentedControl
-                    value={mode}
-                    onChange={(value) => setMode(value as 'to' | 'from')}
-                    data={[
-                        { label: 'Give Money', value: 'to' },
-                        { label: 'Collect Money', value: 'from' },
-                    ]}
-                    fullWidth
-                    size="md"
-                    color={mode === 'to' ? 'green' : 'orange'}
-                />
-
-                <Paper p="md" withBorder style={{ borderColor: mode === 'to' ? 'var(--mantine-color-green-8)' : 'var(--mantine-color-orange-8)', background: 'transparent' }}>
-                    <Stack gap="md">
-                        <Text size="sm" fw={500}>
-                            {mode === 'to' ? 'Select Player to RECEIVE money:' : 'Select Player to TAKE money from:'}
-                        </Text>
-                        <PlayerSelector
-                            players={players}
-                            currentPlayerId="bank"
-                            room={room}
-                            selectedPlayerId={playerId}
-                            onSelect={(val) => setPlayerId(val || '')}
-                        />
-
-                        <NumberInput
-                            label="Amount"
-                            placeholder="0"
-                            value={amount === null ? '' : amount}
-                            onChange={setAmount}
-                            min={0}
-                            size="md"
-                            leftSection={<IconCoin size={16} />}
-                            required
-                        />
-                    </Stack>
-                </Paper>
-
-                <Button
-                    size="lg"
-                    fullWidth
-                    onClick={handleSubmit}
-                    loading={loading}
-                    color={mode === 'to' ? 'green' : 'orange'}
-                    disabled={!playerId || !amount}
-                >
-                    {mode === 'to' ? 'Give' : 'Collect'} ${amount || 0}
-                </Button>
-            </Stack>
-        </Modal>
-    );
-}
-
-function PotModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [mode, setMode] = useState<'in' | 'out'>('in');
-    const [amount, setAmount] = useState<number | string | null>(null);
-    const [playerId, setPlayerId] = useState('');
-    const [loading, setLoading] = useState(false);
-
-    const handleSubmit = async () => {
-        if (!playerId || !amount) return;
-        setLoading(true);
-        try {
-            if (mode === 'in') {
-                await createTransaction(room.id, 'pot_in', Number(amount), 'Added to Pot', playerId, undefined);
-            } else {
-                await createTransaction(room.id, 'pot_out', Number(amount), 'Collected from Pot', undefined, playerId);
-            }
-            onClose();
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Pot Operations">
-            <Stack gap="md">
-                <Paper p="sm" radius="md" style={{ background: 'var(--mantine-color-dark-6)' }}>
-                    <Text size="sm" c="dimmed" ta="center">Current Pot: <span style={{ fontWeight: 700, color: 'white' }}>${room.shared_pot_balance || 0}</span></Text>
-                </Paper>
-
-                <Group grow mb="xs">
-                    <Button
-                        size="md"
-                        color="grape"
-                        variant={mode === 'in' ? 'filled' : 'light'}
-                        onClick={() => setMode('in')}
-                    >
-                        Player → Pot
-                    </Button>
-                    <Button
-                        size="md"
-                        color="cyan"
-                        variant={mode === 'out' ? 'filled' : 'light'}
-                        onClick={() => setMode('out')}
-                    >
-                        Pot → Player
-                    </Button>
-                </Group>
-
-                <Paper p="md" withBorder style={{ borderColor: mode === 'in' ? 'var(--mantine-color-grape-8)' : 'var(--mantine-color-cyan-8)', background: 'transparent' }}>
-                    <Stack gap="md">
-                        <Text size="sm" fw={500}>
-                            {mode === 'in' ? 'Select Player putting money IN:' : 'Select Player taking money OUT:'}
-                        </Text>
-                        <PlayerSelector
-                            players={players}
-                            currentPlayerId="bank"
-                            room={room}
-                            selectedPlayerId={playerId}
-                            onSelect={(val) => setPlayerId(val || '')}
-                        />
-
-                        <NumberInput
-                            label="Amount"
-                            placeholder="0"
-                            value={amount === null ? '' : amount}
-                            onChange={setAmount}
-                            min={0}
-                            size="md"
-                            leftSection={<IconCoin size={16} />}
-                            required
-                            rightSectionWidth={80}
-                            rightSection={
-                                mode === 'in' && (
-                                    <Button
-                                        size="xs"
-                                        variant="subtle"
-                                        onClick={() => setAmount(players.find(p => p.id === playerId)?.current_balance || 0)}
-                                        disabled={!playerId}
-                                    >
-                                        Max
-                                    </Button>
-                                ) || mode === 'out' && (
-                                    <Button
-                                        size="xs"
-                                        variant="subtle"
-                                        onClick={() => setAmount(room.shared_pot_balance || 0)}
-                                    >
-                                        Pay All
-                                    </Button>
-                                )
-                            }
-                        />
-                    </Stack>
-                </Paper>
-
-                <Button
-                    size="lg"
-                    fullWidth
-                    onClick={handleSubmit}
-                    loading={loading}
-                    color={mode === 'in' ? 'grape' : 'cyan'}
-                    disabled={!playerId || !amount}
-                >
-                    Move ${amount || 0}
-                </Button>
-            </Stack>
-        </Modal>
-    );
-}
-
-function PlayerStatusModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [playerId, setPlayerId] = useState('');
-    const [loading, setLoading] = useState(false);
-
-    const selectedPlayer = players.find(p => p.id === playerId);
-
-    const handleStatusToggle = async () => {
-        if (!playerId) return;
-        setLoading(true);
-        try {
-            const player = players.find(p => p.id === playerId);
-            const newStatus = player?.status === 'defeated' ? 'active' : 'defeated';
-            await updatePlayerStatus(playerId, newStatus, room.room_code);
-            onClose();
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Player Status Management">
-            <Stack gap="md">
-                <Text size="sm" c="dimmed">Select a player to change their status:</Text>
-                <PlayerSelector
-                    players={players}
-                    currentPlayerId="bank"
-                    room={room}
-                    selectedPlayerId={playerId}
-                    onSelect={(val) => setPlayerId(val || '')}
-                    showDefeated={true}
-                />
-
-                {selectedPlayer && (
-                    <Paper p="md" radius="md" withBorder style={{ borderColor: selectedPlayer.status === 'defeated' ? 'var(--mantine-color-red-8)' : 'var(--mantine-color-green-8)' }}>
-                        <Stack gap="md">
-                            <Group justify="space-between">
-                                <Text size="sm">Current Status:</Text>
-                                <Badge size="lg" color={selectedPlayer.status === 'defeated' ? 'red' : 'green'} variant="filled">
-                                    {selectedPlayer.status === 'defeated' ? 'Defeated' : 'Active'}
-                                </Badge>
-                            </Group>
-
-                            <Button
-                                size="lg"
-                                fullWidth
-                                onClick={handleStatusToggle}
-                                loading={loading}
-                                color={selectedPlayer.status === 'defeated' ? 'green' : 'red'}
-                            >
-                                {selectedPlayer.status === 'defeated' ? 'Restore Player' : 'Mark as Defeated'}
-                            </Button>
-                        </Stack>
-                    </Paper>
-                )}
-            </Stack>
-        </Modal>
-    );
-}
-
-function LoansModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [activeTab, setActiveTab] = useState<string | null>('active');
-    const [loans, setLoans] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-
-    // Issue Loan State
-    const [playerId, setPlayerId] = useState('');
-    const [amount, setAmount] = useState<number | string | null>(null);
-    const [description, setDescription] = useState('');
-    const [issueLoading, setIssueLoading] = useState(false);
-
-    const fetchLoans = async () => {
-        setLoading(true);
-        try {
-            const data = await getLoans(room.id);
-            setLoans(data || []);
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    useEffect(() => {
-        if (opened) {
-            fetchLoans();
-        }
-    }, [opened]);
-
-    const handleIssueLoan = async () => {
-        if (!playerId || !amount) return;
-        setIssueLoading(true);
-        try {
-            await createLoan(room.id, playerId, Number(amount), description || 'Loan');
-            setAmount(null);
-            setDescription('');
-            setPlayerId('');
-            setActiveTab('active');
-            fetchLoans();
-        } catch (error) {
-            console.error(error);
-        }
-        setIssueLoading(false);
-    };
-
-    const handleRepay = async (loanId: string, repayAmount: number) => {
-        if (!confirm(`Repay $${repayAmount}?`)) return;
-        try {
-            await repayLoan(loanId, repayAmount, room.id);
-            fetchLoans();
-        } catch (error) {
-            console.error(error);
-            alert('Repayment failed. Check funds.');
-        }
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Loans & Mortgages" size="lg">
-            <Tabs value={activeTab} onChange={setActiveTab}>
-                <Tabs.List mb="md">
-                    <Tabs.Tab value="active" leftSection={<IconBuildingEstate size={16} />}>
-                        Active Loans
-                    </Tabs.Tab>
-                    <Tabs.Tab value="issue" leftSection={<IconCoin size={16} />}>
-                        Issue Loan
-                    </Tabs.Tab>
-                </Tabs.List>
-
-                <Tabs.Panel value="active">
-                    <Stack gap="md">
-                        <Group justify="flex-end">
-                            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchLoans} loading={loading}>
-                                Refresh
-                            </Button>
-                        </Group>
-
-                        {loans.length === 0 ? (
-                            <Text c="dimmed" ta="center" py="xl">No active loans</Text>
-                        ) : (
-                            <ScrollArea h={300}>
-                                <Stack gap="sm">
-                                    {loans.map((loan) => (
-                                        <Paper key={loan.id} p="sm" withBorder>
-                                            <Group justify="space-between" align="flex-start">
-                                                <div>
-                                                    <Text fw={600}>{loan.player?.nickname}</Text>
-                                                    <Text size="sm" c="dimmed">{loan.description}</Text>
-                                                    <Text size="xs" c="dimmed">{new Date(loan.created_at).toLocaleDateString()}</Text>
-                                                </div>
-                                                <Stack align="flex-end" gap="xs">
-                                                    <Text fw={700} size="lg" c="red">-${loan.amount}</Text>
-                                                    <Button size="xs" variant="light" color="blue" onClick={() => handleRepay(loan.id, loan.amount)}>
-                                                        Repay Full
-                                                    </Button>
-                                                </Stack>
-                                            </Group>
-                                        </Paper>
-                                    ))}
-                                </Stack>
-                            </ScrollArea>
-                        )}
-                    </Stack>
-                </Tabs.Panel>
-
-                <Tabs.Panel value="issue">
-                    <Stack gap="md">
-                        <Text size="sm" fw={500}>Select Player to Issue Loan to:</Text>
-                        <PlayerSelector
-                            players={players}
-                            currentPlayerId="bank"
-                            room={room}
-                            selectedPlayerId={playerId}
-                            onSelect={(val) => setPlayerId(val || '')}
-                        />
-
-                        <NumberInput
-                            label="Loan Amount"
-                            placeholder="0"
-                            value={amount === null ? '' : amount}
-                            onChange={setAmount}
-                            min={0}
-                            leftSection={<IconCoin size={16} />}
-                        />
-
-                        <TextInput
-                            label="Description"
-                            placeholder="e.g. Mortgage for Boardwalk"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                        />
-
-                        <Button
-                            fullWidth
-                            size="lg"
-                            color="teal"
-                            onClick={handleIssueLoan}
-                            loading={issueLoading}
-                            disabled={!playerId || !amount}
+              ) : transactions.length === 0 ? (
+                <p>No transactions yet.</p>
+              ) : (
+                <Virtuoso
+                  style={{ height: '55svh' }}
+                  data={transactions}
+                  itemContent={(_index, transaction) => (
+                    <div className="activity-row">
+                      <div className="min-w-0">
+                        <p className="text-sm">
+                          {players.find(
+                            (player) =>
+                              player.id === transaction.from_player_id,
+                          )?.nickname ?? room.bank_display_name}{' '}
+                          to{' '}
+                          {players.find(
+                            (player) => player.id === transaction.to_player_id,
+                          )?.nickname ?? room.bank_display_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {transaction.description}
+                        </p>
+                        <time
+                          className="text-xs text-muted-foreground"
+                          dateTime={transaction.created_at}
                         >
-                            Issue Loan of ${amount || 0}
-                        </Button>
-                    </Stack>
-                </Tabs.Panel>
-            </Tabs>
-        </Modal>
-    );
-}
-
-function TransactionHistoryModal({ opened, onClose, room, players }: { opened: boolean; onClose: () => void; room: Room; players: Player[] }) {
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [reverting, setReverting] = useState<string | null>(null);
-
-    const fetchTransactions = async () => {
-        setLoading(true);
-        try {
-            const data = await getTransactions(room.id);
-            setTransactions(data || []);
-        } catch (error) {
-            console.error(error);
-        }
-        setLoading(false);
-    };
-
-    useEffect(() => {
-        if (opened) {
-            fetchTransactions();
-        }
-    }, [opened]);
-
-    const handleRevert = async (transactionId: string) => {
-        if (!confirm('Are you sure you want to revert this transaction? This will create a new reversing transaction.')) return;
-
-        setReverting(transactionId);
-        try {
-            await revertTransaction(transactionId, room.room_code);
-            await fetchTransactions();
-        } catch (error) {
-            console.error(error);
-            alert('Failed to revert transaction');
-        }
-        setReverting(null);
-    };
-
-    const getPlayerName = (playerId: string | null) => {
-        if (!playerId) return room.bank_display_name;
-        const player = players.find(p => p.id === playerId);
-        return player?.nickname || 'Unknown';
-    };
-
-    const formatTransactionType = (type: string) => {
-        switch (type) {
-            case 'bank_to_player': return 'Bank → Player';
-            case 'player_to_bank': return 'Player → Bank';
-            case 'player_to_player': return 'Player → Player';
-            case 'pot_in': return 'To Pot';
-            case 'pot_out': return 'From Pot';
-            case 'reversal': return '⚠️ REVERSAL';
-            default: return type;
-        }
-    };
-
-    // Virtualized row renderer
-    const Row = ({ index }: { index: number }) => {
-        const transaction = transactions[index];
-        if (!transaction) return null;
-
-        return (
-            <div>
-                <Paper p="sm" withBorder style={{
-                    borderColor: transaction.type === 'reversal' ? 'var(--mantine-color-orange-6)' : 'var(--mantine-color-dark-4)',
-                    backgroundColor: transaction.type === 'reversal' ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)'
-                }}>
-                    <Group justify="space-between" align="flex-start">
-                        <Stack gap="xs" style={{ flex: 1 }}>
-                            <Group gap="xs">
-                                <Badge size="sm" variant="filled" color={
-                                    transaction.type === 'reversal' ? 'orange' :
-                                        transaction.type.includes('bank') ? 'blue' :
-                                            transaction.type.includes('pot') ? 'grape' : 'cyan'
-                                }>
-                                    {formatTransactionType(transaction.type)}
-                                </Badge>
-                                <Text size="sm" fw={500} c={transaction.type === 'reversal' ? 'orange.3' : 'white'}>
-                                    {getPlayerName(transaction.from_player_id)} → {getPlayerName(transaction.to_player_id)}
-                                </Text>
-                            </Group>
-                            <Text size="sm" c={transaction.type === 'reversal' ? 'orange.4' : 'gray.4'}>
-                                {transaction.description}
-                            </Text>
-                            <Text size="xs" c="dimmed">{new Date(transaction.created_at).toLocaleString()}</Text>
-                        </Stack>
-                        <Group gap="sm">
-                            <Text fw={700} size="lg" c={transaction.type === 'reversal' ? 'orange.3' : 'white'}>
-                                ${transaction.amount}
-                            </Text>
-                            {transaction.type !== 'reversal' && !transaction.metadata?.is_reversal && (
-                                <ActionIcon
-                                    color="red"
-                                    variant="light"
-                                    size="sm"
-                                    onClick={() => handleRevert(transaction.id)}
-                                    loading={reverting === transaction.id}
-                                    title="Revert Transaction"
-                                >
-                                    <IconArrowBack size={16} />
-                                </ActionIcon>
-                            )}
-                        </Group>
-                    </Group>
-                </Paper>
-            </div>
-        );
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Transaction History" size="xl">
-            <Stack gap="md">
-                <Group justify="space-between">
-                    <Text size="sm" c="dimmed">All room transactions</Text>
-                    <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchTransactions} loading={loading}>
-                        Refresh
+                          {new Date(transaction.created_at).toLocaleString()}
+                        </time>
+                      </div>
+                      <span className="money text-sm">
+                        {formatMoney(transaction.amount)}
+                      </span>
+                      {transaction.type !== 'reversal' &&
+                        !transaction.metadata?.is_reversal && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Reverse transaction"
+                            disabled={pending}
+                            onClick={() =>
+                              setConfirmation({
+                                kind: 'reverse',
+                                id: transaction.id,
+                                amount: transaction.amount,
+                              })
+                            }
+                          >
+                            <Undo2 />
+                          </Button>
+                        )}
+                    </div>
+                  )}
+                />
+              )}
+            </>
+          )}
+          {operation === 'loans' && (
+            <>
+              <h3>Active loans</h3>
+              {loading ? (
+                <Skeleton
+                  className="h-24 w-full"
+                  role="status"
+                  aria-label="Loading loans"
+                />
+              ) : loans.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No active loans at this table.
+                </p>
+              ) : (
+                loans.map((loan) => (
+                  <div className="activity-row" key={loan.id}>
+                    <div>
+                      <p>{loan.player?.nickname}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {loan.description}
+                      </p>
+                      <span className="money">{formatMoney(loan.amount)}</span>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={() =>
+                        setConfirmation({
+                          kind: 'repay',
+                          id: loan.id,
+                          amount: loan.amount,
+                        })
+                      }
+                    >
+                      Repay full
                     </Button>
-                </Group>
-
-                {loading && transactions.length === 0 ? (
-                    <Text c="dimmed" ta="center" py="xl">Loading transactions...</Text>
-                ) : transactions.length === 0 ? (
-                    <Text c="dimmed" ta="center" py="xl">No transactions yet</Text>
+                  </div>
+                ))
+              )}
+              <h3 className="mt-4">Issue a loan</h3>
+            </>
+          )}
+          {confirmation && (
+            <div className="panel form-stack">
+              <p>
+                {confirmation.kind === 'repay'
+                  ? 'Repay loan of '
+                  : 'Reverse transaction of '}
+                {formatMoney(confirmation.amount)}?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => setConfirmation(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    execute(async () => {
+                      if (confirmation.kind === 'repay') {
+                        await repayLoan(
+                          confirmation.id,
+                          confirmation.amount,
+                          room.id,
+                        );
+                        setLoans((await getLoans(room.id)) ?? []);
+                      } else {
+                        await revertTransaction(
+                          confirmation.id,
+                          room.room_code,
+                        );
+                        setTransactions((await getTransactions(room.id)) ?? []);
+                      }
+                      setConfirmation(null);
+                    }, false)
+                  }
+                >
+                  {pending ? 'Processing...' : 'Confirm'}
+                </Button>
+              </div>
+            </div>
+          )}
+          {operation !== 'history' && (
+            <form
+              className="form-stack"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
+              }}
+            >
+              <fieldset disabled={pending} className="form-stack">
+                {operation === 'end' ? (
+                  <p>
+                    Final standings will be published for everyone. This game
+                    cannot be restarted.
+                  </p>
                 ) : (
-                    <Virtuoso
-                        style={{ height: 400 }}
-                        totalCount={transactions.length}
-                        itemContent={(index) => <Row index={index} />}
+                  <>
+                    {(operation === 'transfer' || operation === 'pot') && (
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={
+                            direction === 'give' ? 'default' : 'secondary'
+                          }
+                          onClick={() => setDirection('give')}
+                        >
+                          {operation === 'pot' ? 'Pot to player' : 'Give money'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={
+                            direction === 'collect' ? 'default' : 'secondary'
+                          }
+                          onClick={() => setDirection('collect')}
+                        >
+                          {operation === 'pot'
+                            ? 'Player to pot'
+                            : 'Collect money'}
+                        </Button>
+                      </div>
+                    )}
+                    {operation === 'pot' && (
+                      <p className="text-sm text-muted-foreground">
+                        Current pot: {formatMoney(room.shared_pot_balance)}
+                      </p>
+                    )}
+                    <PlayerSelector
+                      players={players}
+                      currentPlayerId="bank"
+                      selectedPlayerId={playerId}
+                      onSelect={setPlayerId}
+                      showDefeated={operation === 'players'}
+                      room={room}
                     />
+                    {operation === 'salary' && (
+                      <p className="text-sm">
+                        Pay {formatMoney(room.salary_amount)} to{' '}
+                        {selectedPlayer?.nickname ?? 'your selected player'}.
+                      </p>
+                    )}
+                    {operation === 'players' && selectedPlayer && (
+                      <p>Current status: {selectedPlayer.status}</p>
+                    )}
+                    {operation !== 'salary' && operation !== 'players' && (
+                      <div className="field">
+                        <Label htmlFor="bankAmount">Amount</Label>
+                        <Input
+                          id="bankAmount"
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
+                          required
+                          value={amount}
+                          onChange={(event) => setAmount(event.target.value)}
+                        />
+                        {operation === 'pot' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            disabled={direction === 'collect' && !playerId}
+                            onClick={() =>
+                              setAmount(
+                                String(
+                                  direction === 'give'
+                                    ? room.shared_pot_balance
+                                    : (selectedPlayer?.current_balance ?? 0),
+                                ),
+                              )
+                            }
+                          >
+                            {direction === 'give'
+                              ? 'Pay entire pot'
+                              : 'Use player balance'}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    {operation === 'loans' && (
+                      <div className="field">
+                        <Label htmlFor="loanDescription">Description</Label>
+                        <Input
+                          id="loanDescription"
+                          value={description}
+                          onChange={(event) =>
+                            setDescription(event.target.value)
+                          }
+                          placeholder="Mortgage for Boardwalk"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
-            </Stack>
-        </Modal>
-    );
+                <Button
+                  type="submit"
+                  variant={operation === 'end' ? 'destructive' : 'default'}
+                  disabled={pending || (operation !== 'end' && !playerId)}
+                >
+                  {pending
+                    ? 'Processing...'
+                    : operation === 'end'
+                      ? 'End game and show standings'
+                      : operation === 'players'
+                        ? selectedPlayer?.status === 'defeated'
+                          ? 'Restore player'
+                          : 'Mark as defeated'
+                        : operation === 'loans'
+                          ? 'Issue loan'
+                          : 'Confirm payment'}
+                </Button>
+              </fieldset>
+            </form>
+          )}
+        </div>
+      </OperationSheet>
+    </section>
+  );
 }

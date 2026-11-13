@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Banko</title>
+  <rect width="64" height="64" rx="16" fill="#c8f65b"/>
+  <path fill="#142018" fill-rule="evenodd" d="M16 12h18c9 0 14 4 14 11 0 4-2 7-5 9 4 2 7 5 7 10 0 7-5 10-14 10H16V12Zm8 24v8h11c4 0 6-1 6-4s-2-4-6-4H24Z"/>
+  <rect x="24" y="18" width="12" height="12" rx="3" fill="#c8f65b" transform="rotate(-12 30 24)"/>
+  <circle cx="30" cy="24" r="2" fill="#142018"/>
+</svg>

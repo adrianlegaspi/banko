@@ -1,111 +1,155 @@
-'use client'
-
-import { Stack, Text, NumberInput, Textarea, Button } from '@mantine/core';
-import { IconCoin } from '@tabler/icons-react';
-import { useState, useEffect } from 'react';
-import { createTransaction } from '@/app/actions';
+'use client';
+import { useState } from 'react';
+import {
+  createTransaction,
+  createPaymentRequest,
+  type Player,
+  type Room,
+} from '@/app/actions';
 import PlayerSelector from '@/components/PlayerSelector';
-import type { Player, Room } from '@/app/actions';
-
-interface SendMoneyFormProps {
-    roomId: string;
-    players: Player[];
-    currentPlayerId: string;
-    room: Room;
-    onClose: () => void;
-    modalOpen: boolean;
-    initialRecipientId: string | null;
-    onToast?: (toast: { title: string; message: string; color: string }) => void;
-}
-
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { formatMoney } from '@/lib/player-colors';
+import { toast } from 'sonner';
 export default function SendMoneyForm({
-    roomId,
-    players,
-    currentPlayerId,
-    room,
-    onClose,
-    modalOpen,
+  room,
+  players,
+  currentPlayerId,
+  initialRecipientId = null,
+  requesting = false,
+  onClose,
+  onPendingChange,
+}: {
+  room: Room;
+  players: Player[];
+  currentPlayerId: string;
+  initialRecipientId?: string | null;
+  requesting?: boolean;
+  onClose: () => void;
+  onPendingChange?: (pending: boolean) => void;
+}) {
+  const [recipientId, setRecipientId] = useState<string | null>(
     initialRecipientId,
-    onToast
-}: SendMoneyFormProps) {
-    const [amount, setAmount] = useState<number | string | null>(null);
-    const [toPlayerId, setToPlayerId] = useState<string | null>(initialRecipientId || null);
-    const [description, setDescription] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [formError, setFormError] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (modalOpen) {
-            setToPlayerId(initialRecipientId || null);
-        } else {
-            setAmount(null);
-            setToPlayerId(null);
-            setDescription('');
-        }
-    }, [modalOpen, initialRecipientId]);
-
-    const handleSend = async () => {
-        if (!amount) return;
-        setLoading(true);
-        setFormError(null);
+  );
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const recipientName =
+    players.find((player) => player.id === recipientId)?.nickname ??
+    room.bank_display_name;
+  return (
+    <form
+      className="form-stack"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setPending(true);
+        onPendingChange?.(true);
+        setError('');
         try {
-            const targetType = toPlayerId === null ? 'player_to_bank' : 'player_to_player';
-            await createTransaction(roomId, targetType, Number(amount), description || 'Payment', currentPlayerId, toPlayerId || undefined);
-            onClose();
-            onToast?.({
-                title: 'Payment sent',
-                message: `You sent $${Number(amount)}`,
-                color: 'green'
-            });
-        } catch (error) {
-            console.error(error);
-            const message = error instanceof Error ? error.message : 'Payment failed. Please try again.';
-            setFormError(message);
-            onToast?.({
-                title: 'Payment failed',
-                message,
-                color: 'red'
-            });
+          if (!Number.isFinite(Number(amount)) || Number(amount) <= 0)
+            throw new Error('Enter an amount greater than zero.');
+          if (requesting) {
+            if (!recipientId) throw new Error('Choose a player.');
+            await createPaymentRequest(
+              room.id,
+              currentPlayerId,
+              Number(amount),
+              description || 'Payment Request',
+              recipientId,
+            );
+          } else {
+            await createTransaction(
+              room.id,
+              recipientId ? 'player_to_player' : 'player_to_bank',
+              Number(amount),
+              description || 'Payment',
+              currentPlayerId,
+              recipientId ?? undefined,
+            );
+          }
+          toast.success(requesting ? 'Request sent' : 'Payment sent', {
+            description:
+              formatMoney(Number(amount)) +
+              (requesting ? ' requested from ' : ' sent to ') +
+              recipientName,
+          });
+          onClose();
+        } catch (failure) {
+          setError(
+            failure instanceof Error ? failure.message : 'Please try again.',
+          );
+        } finally {
+          setPending(false);
+          onPendingChange?.(false);
         }
-        setLoading(false);
-    };
-
-    return (
-        <Stack gap="md">
-            <div>
-                <Text size="sm" fw={500} mb="xs">Send to</Text>
-                <PlayerSelector
-                    players={players}
-                    currentPlayerId={currentPlayerId}
-                    selectedPlayerId={toPlayerId}
-                    onSelect={setToPlayerId}
-                    includeBank={true}
-                    room={room}
-                />
-            </div>
-            <NumberInput
-                label="Amount"
-                placeholder="0"
-                value={amount === null ? '' : amount}
-                onChange={setAmount}
-                min={0}
-                leftSection={<IconCoin size={16} />}
-                required
-            />
-            {formError && (
-                <Text size="sm" c="red">
-                    {formError}
-                </Text>
-            )}
-            <Textarea
-                label="Description"
-                placeholder="Description (optional)"
-                value={description}
-                onChange={(e) => setDescription(e.currentTarget.value)}
-            />
-            <Button onClick={handleSend} loading={loading} disabled={!amount}>
-                Send ${amount || 0}
-            </Button>
-        </Stack>
-    );
+      }}
+    >
+      <fieldset disabled={pending} className="form-stack">
+        <div>
+          <p className="field-label">
+            {requesting ? 'Request from' : 'Send to'}
+          </p>
+          <PlayerSelector
+            players={players}
+            currentPlayerId={currentPlayerId}
+            selectedPlayerId={recipientId}
+            onSelect={setRecipientId}
+            includeBank={!requesting}
+            room={room}
+          />
+        </div>
+        <div className="field">
+          <Label htmlFor="transferAmount">Amount</Label>
+          <Input
+            id="transferAmount"
+            type="number"
+            inputMode="decimal"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="0"
+            required
+          />
+        </div>
+        <div className="field">
+          <Label htmlFor="transferNote">Note (optional)</Label>
+          <Textarea
+            id="transferNote"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Rent, a deal, a little friendly rivalry..."
+          />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {requesting ? 'Requesting from ' : 'Paying '}
+          {recipientName}.{' '}
+          {requesting
+            ? ''
+            : 'Your balance: ' +
+              formatMoney(
+                players.find((player) => player.id === currentPlayerId)
+                  ?.current_balance ?? 0,
+              )}
+        </p>
+        {error && (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        )}
+        <Button
+          type="submit"
+          disabled={pending || (requesting && !recipientId)}
+        >
+          {pending
+            ? 'Processing...'
+            : (requesting ? 'Request ' : 'Send ') +
+              formatMoney(Number(amount) || 0)}
+        </Button>
+      </fieldset>
+    </form>
+  );
 }

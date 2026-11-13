@@ -1,108 +1,85 @@
-'use client'
-
-import { Group, Avatar, Text, Paper, SimpleGrid, Stack } from '@mantine/core';
-import { IconBuildingBank } from '@tabler/icons-react';
+'use client';
+import { Landmark } from 'lucide-react';
 import type { Player, Room } from '@/app/actions';
-
-type PlayerSelectorProps = {
-    players: Player[];
-    currentPlayerId: string;
-    selectedPlayerId: string | null;
-    onSelect: (playerId: string | null) => void;
-    includeBank?: boolean;
-    room?: Room;
-};
-
+import { formatMoney, getPlayerColor } from '@/lib/player-colors';
+export function PlayerAvatar({
+  player,
+}: {
+  player: Pick<Player, 'color' | 'nickname'>;
+}) {
+  const palette = getPlayerColor(player.color);
+  return (
+    <span
+      className="player-avatar"
+      style={{ background: palette.background, color: palette.foreground }}
+    >
+      {player.nickname[0]?.toUpperCase()}
+    </span>
+  );
+}
 export default function PlayerSelector({
-    players,
-    currentPlayerId,
-    selectedPlayerId,
-    onSelect,
-    includeBank = false,
-    showDefeated = false,
-    room
-}: PlayerSelectorProps & { showDefeated?: boolean }) {
-    const availablePlayers = players.filter(p => p.id !== currentPlayerId && (showDefeated || p.status !== 'defeated'));
-
-    return (
-        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm">
-            {includeBank && room && (
-                <Paper
-                    p="md"
-                    radius="md"
-                    withBorder
-                    style={{
-                        cursor: 'pointer',
-                        borderWidth: '2px',
-                        borderColor: selectedPlayerId === null ? 'var(--mantine-color-gray-4)' : 'var(--mantine-color-dark-4)',
-                        backgroundColor: selectedPlayerId === null ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)',
-                        transition: 'all 0.2s ease',
-                        transform: selectedPlayerId === null ? 'scale(1.02)' : 'scale(1)',
-                        boxShadow: selectedPlayerId === null ? '0 0 0 3px rgba(255, 255, 255, 0.2)' : 'none'
-                    }}
-                    onClick={() => onSelect(null)}
-                    onMouseEnter={(e) => {
-                        if (selectedPlayerId !== null) {
-                            e.currentTarget.style.backgroundColor = 'var(--mantine-color-dark-5)';
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        if (selectedPlayerId !== null) {
-                            e.currentTarget.style.backgroundColor = 'var(--mantine-color-dark-6)';
-                        }
-                    }}
-                >
-                    <Stack gap="xs" align="center">
-                        <Avatar color="gray" size="lg" radius="xl">
-                            <IconBuildingBank size={24} />
-                        </Avatar>
-                        <Text size="sm" fw={600} ta="center" c={selectedPlayerId === null ? 'white' : undefined}>
-                            {room.bank_display_name}
-                        </Text>
-                        <Text size="xs" c={selectedPlayerId === null ? 'gray.3' : 'dimmed'}>Bank</Text>
-                    </Stack>
-                </Paper>
-            )}
-            {availablePlayers.map((player) => (
-                <Paper
-                    key={player.id}
-                    p="md"
-                    radius="md"
-                    withBorder
-                    style={{
-                        cursor: 'pointer',
-                        borderWidth: '2px',
-                        borderColor: selectedPlayerId === player.id ? `var(--mantine-color-${player.color}-5)` : 'var(--mantine-color-dark-4)',
-                        backgroundColor: selectedPlayerId === player.id ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)',
-                        transition: 'all 0.2s ease',
-                        transform: selectedPlayerId === player.id ? 'scale(1.02)' : 'scale(1)',
-                        boxShadow: selectedPlayerId === player.id ? `0 0 0 3px var(--mantine-color-${player.color}-9)` : 'none'
-                    }}
-                    onClick={() => onSelect(player.id)}
-                    onMouseEnter={(e) => {
-                        if (selectedPlayerId !== player.id) {
-                            e.currentTarget.style.backgroundColor = 'var(--mantine-color-dark-5)';
-                        }
-                    }}
-                    onMouseLeave={(e) => {
-                        if (selectedPlayerId !== player.id) {
-                            e.currentTarget.style.backgroundColor = 'var(--mantine-color-dark-6)';
-                        }
-                    }}
-                >
-                    <Stack gap="xs" align="center">
-                        <Avatar color={player.color} size="lg" radius="xl">
-                            {player.nickname[0]}
-                        </Avatar>
-                        <Text size="sm" fw={600} ta="center" c={selectedPlayerId === player.id ? 'white' : undefined}>
-                            {player.nickname}
-                        </Text>
-                        <Text size="xs" c={selectedPlayerId === player.id ? 'gray.3' : 'dimmed'}>
-                            ${player.current_balance}
-                        </Text>
-                    </Stack>
-                </Paper>
-            ))}
-        </SimpleGrid>
-    );
+  players,
+  currentPlayerId,
+  selectedPlayerId,
+  onSelect,
+  includeBank = false,
+  showDefeated = false,
+  room,
+}: {
+  players: Player[];
+  currentPlayerId: string;
+  selectedPlayerId: string | null;
+  onSelect: (playerId: string | null) => void;
+  includeBank?: boolean;
+  showDefeated?: boolean;
+  room?: Room;
+}) {
+  return (
+    <div className="selector" role="group" aria-label="Choose a player">
+      {includeBank && room && (
+        <button
+          type="button"
+          aria-pressed={selectedPlayerId === null}
+          className={
+            selectedPlayerId === null ? 'border-primary bg-secondary' : ''
+          }
+          onClick={() => onSelect(null)}
+        >
+          <Landmark />
+          <span>
+            {room.bank_display_name}
+            <small className="block text-muted-foreground">Bank</small>
+          </span>
+        </button>
+      )}
+      {players
+        .filter(
+          (player) =>
+            player.id !== currentPlayerId &&
+            (showDefeated || player.status !== 'defeated'),
+        )
+        .map((player) => (
+          <button
+            type="button"
+            key={player.id}
+            aria-pressed={selectedPlayerId === player.id}
+            className={
+              selectedPlayerId === player.id
+                ? 'border-primary bg-secondary'
+                : ''
+            }
+            onClick={() => onSelect(player.id)}
+          >
+            <PlayerAvatar player={player} />
+            <span className="min-w-0 break-words">
+              {player.nickname}
+              <small className="block text-muted-foreground">
+                {formatMoney(player.current_balance)}
+                {player.status === 'defeated' ? ' / Defeated' : ''}
+              </small>
+            </span>
+          </button>
+        ))}
+    </div>
+  );
 }

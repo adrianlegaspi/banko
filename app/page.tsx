@@ -1,70 +1,63 @@
-'use client'
-
-import { Container, Title, Text, Button, Group, Stack, Paper } from '@mantine/core';
-import { IconBuildingBank, IconUserPlus } from '@tabler/icons-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-
-import { signInAsGuest } from '@/utils/auth';
-
+import { ArrowUpRight, Users, Zap, ShieldCheck } from 'lucide-react';
+import AppShell from '@/components/AppShell';
+import PlayerBalanceCard from '@/components/game/PlayerBalanceCard';
+import { buttonVariants } from '@/components/ui/button';
 export default function Home() {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const supabase = createClient();
-    const signIn = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        await signInAsGuest(supabase);
-      }
-      setLoading(false);
-    };
-    signIn();
-  }, []);
-
-  if (loading) {
-    return (
-      <Container size="xs" h="100vh" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Text>Loading...</Text>
-      </Container>
-    );
-  }
-
   return (
-    <Container size="xs" h="100vh" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Paper p="xl" radius="lg" withBorder w="100%">
-        <Stack align="center" gap="xl">
-          <Title order={1} style={{ fontSize: '3rem' }}>Banko 💸</Title>
-          <Text c="dimmed" ta="center">
-            The digital banker for your board games.
-            No more paper money, just fun.
-          </Text>
-
-          <Group w="100%" grow>
-            <Button
-              component={Link}
+    <AppShell>
+      <div className="home-layout">
+        <section className="home-copy">
+          <p className="eyebrow text-primary">LESS COUNTING. MORE PLAYING.</p>
+          <h1>
+            Your game.
+            <br />
+            Your money.
+            <br />
+            <span className="text-primary">Your bank.</span>
+          </h1>
+          <p className="intro">
+            All the fun of game night. None of the paper money. Send, request
+            and settle up in seconds.
+          </p>
+          <div className="home-actions">
+            <Link
+              data-slot="button"
+              className={buttonVariants({ size: 'lg' })}
               href="/create"
-              size="xl"
-              color="violet"
-              leftSection={<IconBuildingBank size={24} />}
             >
-              Create Room
-            </Button>
-          </Group>
-
-          <Button
-            component={Link}
-            href="/join"
-            variant="light"
-            size="lg"
-            fullWidth
-            leftSection={<IconUserPlus size={20} />}
-          >
-            Join Existing Room
-          </Button>
-        </Stack>
-      </Paper>
-    </Container>
+              Create a room <ArrowUpRight />
+            </Link>
+            <Link
+              data-slot="button"
+              className={buttonVariants({ variant: 'secondary', size: 'lg' })}
+              href="/join"
+            >
+              <Users /> Join a room
+            </Link>
+          </div>
+          <div className="home-notes">
+            <span>
+              <Zap size={16} /> Instant transfers
+            </span>
+            <span>
+              <ShieldCheck size={16} /> No account needed
+            </span>
+          </div>
+        </section>
+        <div className="home-card-stage">
+          <span className="eyebrow stage-label">YOUR SEAT AT THE TABLE</span>
+          <PlayerBalanceCard
+            bankName="The Bank"
+            holderName="Game night starts here"
+            color="green"
+            balance={1500}
+          />
+          <div className="stage-caption">
+            <span className="status-light" /> Play money. Real competition.
+          </div>
+        </div>
+      </div>
+    </AppShell>
   );
 }

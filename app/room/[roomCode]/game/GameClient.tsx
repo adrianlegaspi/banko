@@ -1,1043 +1,628 @@
-'use client'
-
-import { Container, Title, Text, Group, Stack, Paper, Badge, Avatar, Button, Modal, NumberInput, Textarea, Affix, Notification, Transition, SimpleGrid, Grid, Menu, ActionIcon, Tabs, ScrollArea, TextInput, SegmentedControl } from '@mantine/core';
-import { IconSend, IconReceipt2, IconQrcode, IconSquare, IconRefresh, IconTrophy, IconDotsVertical, IconDownload, IconBuildingBank, IconBuildingEstate, IconCoin, IconHome, IconBuildingSkyscraper, IconVolume, IconVolumeOff, IconArrowsLeftRight, IconCheck, IconX } from '@tabler/icons-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Html5QrcodeScanner, Html5Qrcode } from 'html5-qrcode';
+'use client';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import {
+  Send,
+  ArrowDownLeft,
+  ScanLine,
+  QrCode,
+  Wallet,
+  Users,
+  Activity,
+  Landmark,
+  Trophy,
+  Dice5,
+  Volume2,
+  VolumeX,
+  MoreHorizontal,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { createClient } from '@/utils/supabase/client';
-import type { Room, Player } from '@/app/actions';
-import { createTransaction, respondToPaymentRequest, rollDice, getLoans, repayLoan } from '@/app/actions';
+import {
+  respondToPaymentRequest,
+  rollDice,
+  type Room,
+  type Player,
+} from '@/app/actions';
+import type { Transaction, PaymentRequest, GameEvent } from '@/lib/game-types';
+import { formatMoney } from '@/lib/player-colors';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import AppShell from '@/components/AppShell';
+import CopyButton from '@/components/CopyButton';
+import OperationSheet from '@/components/OperationSheet';
 import BankPanel from '@/components/BankPanel';
-import SendMoneyForm from '@/components/game/SendMoneyForm';
-import RequestMoneyForm from '@/components/game/RequestMoneyForm';
-import QRRequestForm from '@/components/game/QRRequestForm';
+import { PlayerAvatar } from '@/components/PlayerSelector';
 import PlayerBalanceCard from '@/components/game/PlayerBalanceCard';
-import ScanQRForm from '@/components/game/ScanQRForm';
-
-type Transaction = any;
-type ToastMessage = { title: string; message: string; color: string };
-
-type Props = {
-    room: Room;
-    currentPlayer: Player;
-    players: Player[];
-    transactions: Transaction[];
-    gameEvents: any[];
-};
-
-export default function GameClient({ room, currentPlayer, players: initialPlayers, transactions: initialTransactions, gameEvents: initialGameEvents }: Props) {
-    const [players, setPlayers] = useState(initialPlayers);
-    const [transactions, setTransactions] = useState(initialTransactions);
-    const [gameEvents, setGameEvents] = useState(initialGameEvents);
-    const [sendModalOpen, setSendModalOpen] = useState(false);
-    const [requestModalOpen, setRequestModalOpen] = useState(false);
-    const [qrModalOpen, setQrModalOpen] = useState(false);
-    const [scanModalOpen, setScanModalOpen] = useState(false);
-    const [bankServicesModalOpen, setBankServicesModalOpen] = useState(false);
-    const [defaultRecipientId, setDefaultRecipientId] = useState<string | null>(null);
-    const [defaultRequestPayerId, setDefaultRequestPayerId] = useState<string | null>(null);
-    const [rolling, setRolling] = useState(false);
-    const [paymentRequests, setPaymentRequests] = useState<any[]>([]);
-    const [activityPage, setActivityPage] = useState(0);
-    const [toast, setToast] = useState<ToastMessage | null>(null);
-    const playersRef = useRef(players);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [muted, setMuted] = useState(false);
-
-    useEffect(() => {
-        playersRef.current = players;
-    }, [players]);
-
-    const router = useRouter();
-
-    const showToast = useCallback((toastData: ToastMessage) => {
-        setToast(toastData);
-        if (toastTimeoutRef.current) {
-            clearTimeout(toastTimeoutRef.current);
-        }
-        toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
-    }, []);
-
-    const toggleMute = useCallback(() => {
-        setMuted((m) => {
-            const next = !m;
-            try { localStorage.setItem('banko_muted', String(next)); } catch { }
-            return next;
-        });
-    }, []);
-
-    useEffect(() => {
-        try {
-            const stored = localStorage.getItem('banko_muted');
-            if (stored != null) setMuted(stored === 'true');
-        } catch { }
-    }, []);
-
-    // Memoize supabase client to prevent re-creation on every render
-    const supabase = useMemo(() => createClient(), []);
-
-    const initAudioContext = () => {
-        if (!audioContextRef.current) {
-            const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-            if (AudioContext) {
-                audioContextRef.current = new AudioContext();
-            }
-        }
-        if (audioContextRef.current?.state === 'suspended') {
-            audioContextRef.current.resume();
-        }
-    };
-
-    const playNotificationSound = () => {
-        if (muted) return;
-        try {
-            initAudioContext();
-            if (!audioContextRef.current) return;
-
-            const ctx = audioContextRef.current;
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(500, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(1000, ctx.currentTime + 0.1);
-
-            gain.gain.setValueAtTime(0.1, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-
-            osc.start();
-            osc.stop(ctx.currentTime + 0.5);
-        } catch (e) {
-            console.error("Audio play failed", e);
-        }
-    };
-
-    useEffect(() => {
-        // Initial fetch of pending requests
-        supabase.from('payment_requests')
-            .select('*, from_player:players!from_player_id(nickname)')
-            .eq('room_id', room.id)
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false })
-            .then(({ data }) => {
-                if (data) setPaymentRequests(data);
+import SendMoneyForm from '@/components/game/SendMoneyForm';
+import QRRequestForm from '@/components/game/QRRequestForm';
+import BankServices from '@/components/game/BankServices';
+import ActivityFeed from '@/components/game/ActivityFeed';
+const ScanQRForm = dynamic(() => import('@/components/game/ScanQRForm'), {
+  ssr: false,
+  loading: () => <p role="status">Loading scanner...</p>,
+});
+type Operation = 'send' | 'request' | 'scan' | 'qr' | 'services' | 'requests';
+export default function GameClient({
+  room: initialRoom,
+  currentPlayer: initialPlayer,
+  players: initialPlayers,
+  transactions: initialTransactions,
+  gameEvents: initialEvents,
+}: {
+  room: Room;
+  currentPlayer: Player;
+  players: Player[];
+  transactions: Transaction[];
+  gameEvents: GameEvent[];
+}) {
+  const [room, setRoom] = useState(initialRoom);
+  const [players, setPlayers] = useState(initialPlayers);
+  const [transactions, setTransactions] = useState(initialTransactions);
+  const [gameEvents, setGameEvents] = useState(initialEvents);
+  const [requests, setRequests] = useState<PaymentRequest[]>([]);
+  const [connection, setConnection] = useState('Connecting');
+  const [activeTab, setActiveTab] = useState('wallet');
+  const [operation, setOperation] = useState<Operation | null>(null);
+  const [recipientId, setRecipientId] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [muted, setMuted] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const player =
+    players.find((candidate) => candidate.id === initialPlayer.id) ??
+    initialPlayer;
+  const defeated = player.status === 'defeated';
+  const pendingRequests = requests.filter(
+    (request) =>
+      request.status === 'pending' &&
+      request.from_player_id !== player.id &&
+      (request.to_player_id === player.id || request.to_player_id === null),
+  );
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        setMuted(localStorage.getItem('banko_muted') === 'true');
+      } catch {}
+    });
+  }, []);
+  useEffect(() => {
+    let active = true;
+    async function refresh() {
+      const results = await Promise.all([
+        supabase.from('rooms').select('*').eq('id', initialRoom.id).single(),
+        supabase
+          .from('players')
+          .select('*')
+          .eq('room_id', initialRoom.id)
+          .order('created_at'),
+        supabase
+          .from('transactions')
+          .select(
+            '*, from_player:players!from_player_id(nickname), to_player:players!to_player_id(nickname)',
+          )
+          .eq('room_id', initialRoom.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('payment_requests')
+          .select('*, from_player:players!from_player_id(nickname)')
+          .eq('room_id', initialRoom.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('game_events')
+          .select('*, player:players(nickname)')
+          .eq('room_id', initialRoom.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ]);
+      if (!active) return;
+      if (results.some((result) => result.error)) {
+        setConnection('Reconnecting');
+        return;
+      }
+      const [
+        roomResult,
+        playersResult,
+        transactionsResult,
+        requestsResult,
+        eventsResult,
+      ] = results;
+      if (roomResult.data) {
+        setRoom(roomResult.data);
+        if (roomResult.data.status === 'finished')
+          router.push('/room/' + initialRoom.room_code + '/finish');
+      }
+      if (playersResult.data) setPlayers(playersResult.data);
+      if (transactionsResult.data) setTransactions(transactionsResult.data);
+      if (requestsResult.data) setRequests(requestsResult.data);
+      if (eventsResult.data) setGameEvents(eventsResult.data);
+    }
+    const channel = supabase
+      .channel('game-' + initialRoom.id)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'players',
+          filter: 'room_id=eq.' + initialRoom.id,
+        },
+        () => void refresh(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rooms',
+          filter: 'id=eq.' + initialRoom.id,
+        },
+        () => void refresh(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payment_requests',
+          filter: 'room_id=eq.' + initialRoom.id,
+        },
+        () => void refresh(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'game_events',
+          filter: 'room_id=eq.' + initialRoom.id,
+        },
+        () => void refresh(),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transactions',
+          filter: 'room_id=eq.' + initialRoom.id,
+        },
+        (payload) => {
+          if (payload.new.to_player_id === initialPlayer.id) {
+            toast.success('Money received', {
+              description:
+                formatMoney(Number(payload.new.amount)) + ' added to your card',
             });
-
-        const channel = supabase
-            .channel('game')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${room.id}` }, () => {
-                supabase.from('players').select('*').eq('room_id', room.id).then(({ data }) => {
-                    if (data) setPlayers(data);
-                });
-            })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'transactions', filter: `room_id=eq.${room.id}` }, (payload: any) => {
-                const newTransaction = payload.new;
-
-                // Check if current player received money
-                if (newTransaction.to_player_id === currentPlayer.id) {
-                    // Play success sound
-                    if (!muted) {
-                        const audio = new Audio('/assets/sounds/success.mp3');
-                        audio.volume = 0.5;
-                        audio.play().catch(e => console.error('Audio play failed', e));
-                    }
-
-                    // Fetch transaction details to get sender info
-                    supabase
-                        .from('transactions')
-                        .select('*, from_player:players!from_player_id(nickname)')
-                        .eq('id', newTransaction.id)
-                        .single()
-                        .then(({ data }) => {
-                            if (data) {
-                                const fromName = data.from_player?.nickname || 'Bank';
-                                showToast({
-                                    title: 'Money Received! 💰',
-                                    message: `${fromName} sent you $${data.amount}`,
-                                    color: 'green'
-                                });
-                            }
-                        });
-                }
-
-                // Check if bank collected from current player
-                if (newTransaction.type === 'player_to_bank' && newTransaction.from_player_id === currentPlayer.id) {
-                    if (!muted) {
-                        const audio = new Audio('/assets/sounds/error.mp3');
-                        audio.volume = 0.5;
-                        audio.play().catch(e => console.error('Audio play failed', e));
-                    }
-
-                    const reason = newTransaction.description || 'Bank collection';
-                    showToast({
-                        title: 'Paid Bank',
-                        message: `${reason}: -$${newTransaction.amount}`,
-                        color: 'red'
-                    });
-                }
-
-                // Update transactions list
-                supabase.from('transactions').select('*, from_player:players!from_player_id(nickname), to_player:players!to_player_id(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
-                    if (data) setTransactions(data);
-                });
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_requests', filter: `room_id=eq.${room.id}` }, () => {
-                supabase.from('payment_requests')
-                    .select('*, from_player:players!from_player_id(nickname)')
-                    .eq('room_id', room.id)
-                    .eq('status', 'pending')
-                    .order('created_at', { ascending: false })
-                    .then(({ data }) => {
-                        if (data) setPaymentRequests(data);
-                    });
-            })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, (payload: any) => {
-                if (payload.new.status === 'finished') {
-                    window.location.href = `/room/${room.room_code}/finish`;
-                }
-            })
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'game_events', filter: `room_id=eq.${room.id}` }, (payload: any) => {
-                console.log('Game Event Received:', payload);
-                // Show Toast
-                const newEvent = payload.new;
-                if (newEvent.event_type === 'dice_roll') {
-                    const player = playersRef.current.find(p => p.id === newEvent.player_id);
-                    const nickname = player ? player.nickname : 'Unknown Player';
-                    const { roll1, roll2, total } = newEvent.payload;
-                    const sides = newEvent.payload.sides;
-
-                    showToast({
-                        title: 'Dice Roll!',
-                        message: `${nickname} rolled ${roll1} + ${roll2} = ${total}`,
-                        color: 'orange'
-                    });
-
-                    playNotificationSound();
-                }
-
-                supabase.from('game_events').select('*, player:players(nickname)').eq('room_id', room.id).order('created_at', { ascending: false }).limit(50).then(({ data }) => {
-                    if (data) setGameEvents(data);
-                });
-            })
-            .subscribe((status) => {
-                console.log('Realtime Subscription Status:', status);
+            if (!muted) {
+              const audio = new Audio('/assets/sounds/success.mp3');
+              audio.volume = 0.5;
+              void audio.play().catch(() => {});
+            }
+          }
+          if (
+            payload.new.type === 'player_to_bank' &&
+            payload.new.from_player_id === initialPlayer.id
+          ) {
+            toast('Paid bank', {
+              description:
+                formatMoney(Number(payload.new.amount)) +
+                ' / ' +
+                (payload.new.description || 'Bank collection'),
             });
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [room.id, room.room_code, supabase, currentPlayer.id, showToast]);
-
-    useEffect(() => {
-        return () => {
-            if (toastTimeoutRef.current) {
-                clearTimeout(toastTimeoutRef.current);
+            if (!muted) {
+              const audio = new Audio('/assets/sounds/error.mp3');
+              audio.volume = 0.5;
+              void audio.play().catch(() => {});
             }
-        };
-    }, []);
-
-    const myBalance = players.find(p => p.id === currentPlayer.id)?.current_balance || 0;
-    const isDefeated = currentPlayer.status === 'defeated';
-
-    // Filter requests where I am the target (to_player_id is me OR null/QR) AND I am not the requester
-    const myPendingRequests = paymentRequests.filter(pr =>
-        (pr.to_player_id === currentPlayer.id || pr.to_player_id === null) &&
-        pr.from_player_id !== currentPlayer.id
-    );
-
-    return (
-        <Container size="xl" py="md">
-            <Stack gap="md">
-                {/* Header */}
-                <Group justify="space-between">
-                    <Group gap="sm" align="center">
-                        <ActionIcon variant="light" onClick={toggleMute} title={muted ? 'Unmute' : 'Mute'}>
-                            {muted ? <IconVolumeOff size={18} /> : <IconVolume size={18} />}
-                        </ActionIcon>
-                        <div>
-                            <Title order={3}>{room.room_name}</Title>
-                            <Text size="sm" c="dimmed">{room.room_code}</Text>
-                        </div>
-                    </Group>
-                    <Badge size="lg" color="green">In Progress</Badge>
-                </Group>
-
-                <Grid gutter="md">
-                    <Grid.Col span={{ base: 12, md: 5, lg: 4 }}>
-                        <Stack gap="md">
-                            {/* Shared Pot Display */}
-                            <Paper
-                                p="md"
-                                radius="md"
-                                withBorder
-                                style={{
-                                    background: 'linear-gradient(135deg, var(--mantine-color-yellow-9) 0%, var(--mantine-color-orange-9) 100%)',
-                                    borderColor: 'var(--mantine-color-yellow-6)'
-                                }}
-                            >
-                                <Group justify="space-between">
-                                    <Group gap="xs">
-                                        <IconTrophy size={24} color="white" />
-                                        <Text fw={700} c="white">Shared Pot</Text>
-                                    </Group>
-                                    <Text fw={800} size="xl" c="white">${room.shared_pot_balance || 0}</Text>
-                                </Group>
-                            </Paper>
-
-                            {/* Balance Card */}
-                            <PlayerBalanceCard
-                                currentPlayer={currentPlayer}
-                                room={room}
-                                balance={myBalance}
-                                isDefeated={isDefeated}
-                            />
-
-                            {/* Pending Requests Alert */}
-                            {
-                                myPendingRequests.length > 0 && (
-                                    <Paper p="md" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-orange-6)', backgroundColor: 'rgba(255, 145, 0, 0.1)' }}>
-                                        <Text fw={600} mb="sm" c="orange">Pending Requests ({myPendingRequests.length})</Text>
-                                        <Stack gap="sm">
-                                            {myPendingRequests.map(pr => (
-                                                <Group key={pr.id} justify="space-between" p="xs" style={{ background: 'var(--mantine-color-dark-6)', borderRadius: 'var(--mantine-radius-sm)' }}>
-                                                    <div>
-                                                        <Text size="sm" fw={500}>{pr.from_player.nickname} requests <span style={{ fontWeight: 700 }}>${pr.amount}</span></Text>
-                                                        <Text size="xs" c="dimmed">{pr.description}</Text>
-                                                    </div>
-                                                    <Group gap="xs">
-                                                        <Button size="xs" color="red" variant="subtle" onClick={async () => {
-                                                            await respondToPaymentRequest(pr.id, 'rejected', currentPlayer.id, room.room_code);
-                                                        }}>Reject</Button>
-                                                        <Button size="xs" color="green" onClick={async () => {
-                                                            await respondToPaymentRequest(pr.id, 'accepted', currentPlayer.id, room.room_code);
-                                                        }}>Pay</Button>
-                                                    </Group>
-                                                </Group>
-                                            ))}
-                                        </Stack>
-                                    </Paper>
-                                )
-                            }
-
-                            {/* Action Buttons */}
-                            {!isDefeated && (
-                                <Stack gap="sm">
-                                    <SimpleGrid cols={2} spacing="sm">
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-blue-6) 0%, var(--mantine-color-indigo-6) 100%)',
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s ease'
-                                            }}
-                                            onClick={() => { initAudioContext(); setSendModalOpen(true); }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <IconSend size={32} color="white" />
-                                                <Text fw={600} c="white">Send</Text>
-                                            </Stack>
-                                        </Paper>
-
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-grape-6) 0%, var(--mantine-color-pink-6) 100%)',
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s ease'
-                                            }}
-                                            onClick={() => { initAudioContext(); setRequestModalOpen(true); }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <IconReceipt2 size={32} color="white" />
-                                                <Text fw={600} c="white">Request</Text>
-                                            </Stack>
-                                        </Paper>
-
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-cyan-6) 0%, var(--mantine-color-teal-6) 100%)',
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s ease'
-                                            }}
-                                            onClick={() => { initAudioContext(); setQrModalOpen(true); }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <IconQrcode size={32} color="white" />
-                                                <Text fw={600} c="white">QR Code</Text>
-                                            </Stack>
-                                        </Paper>
-
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-violet-6) 0%, var(--mantine-color-grape-6) 100%)',
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s ease'
-                                            }}
-                                            onClick={() => { initAudioContext(); setScanModalOpen(true); }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <IconQrcode size={32} color="white" />
-                                                <Text fw={600} c="white">Scan</Text>
-                                            </Stack>
-                                        </Paper>
-
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-teal-6) 0%, var(--mantine-color-green-6) 100%)',
-                                                cursor: 'pointer',
-                                                transition: 'transform 0.2s ease'
-                                            }}
-                                            onClick={() => { initAudioContext(); setBankServicesModalOpen(true); }}
-                                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <IconBuildingBank size={32} color="white" />
-                                                <Text fw={600} c="white">Bank Services</Text>
-                                            </Stack>
-                                        </Paper>
-                                        <Paper
-                                            p="md"
-                                            radius="md"
-                                            style={{
-                                                background: 'linear-gradient(135deg, var(--mantine-color-violet-6) 0%, var(--mantine-color-indigo-6) 100%)',
-                                                cursor: rolling ? 'wait' : 'pointer',
-                                                transition: 'transform 0.2s ease',
-                                                opacity: rolling ? 0.7 : 1,
-                                                pointerEvents: rolling ? 'none' : 'auto'
-                                            }}
-                                            onClick={async () => {
-                                                initAudioContext();
-                                                setRolling(true);
-                                                try {
-                                                    await rollDice(room.id, currentPlayer.id, 6);
-                                                } catch (e) {
-                                                    console.error(e);
-                                                }
-                                                setRolling(false);
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (!rolling) e.currentTarget.style.transform = 'scale(1.02)';
-                                            }}
-                                            onMouseLeave={(e) => {
-
-                                                e.currentTarget.style.transform = 'scale(1)';
-                                            }}
-                                        >
-                                            <Stack align="center" gap="xs">
-                                                <Group gap="xs">
-                                                    <IconSquare size={28} color="white" />
-                                                    <Text fw={600} c="white">Roll Dice</Text>
-                                                </Group>
-                                                <Text size="sm" c="white" opacity={0.8}>2d6</Text>
-                                            </Stack>
-                                        </Paper>
-                                    </SimpleGrid>
-                                </Stack>
-                            )}
-
-                            {
-                                isDefeated && (
-                                    <Paper p="xl" radius="md" withBorder style={{ borderColor: 'var(--mantine-color-red-6)', backgroundColor: 'var(--mantine-color-red-9)' }}>
-                                        <Stack align="center" gap="sm">
-                                            <Text size="xl">💀</Text>
-                                            <Text size="lg" fw={700} c="red" ta="center">Player Defeated</Text>
-                                            <Text size="sm" c="dimmed" ta="center">You can no longer perform actions, but you can still view the game.</Text>
-                                        </Stack>
-                                    </Paper>
-                                )
-                            }
-
-                        </Stack>
-                    </Grid.Col>
-
-                    <Grid.Col span={{ base: 12, md: 7, lg: 8 }}>
-                        <Stack gap="md">
-                            {/* Bank Panel (Operator Only) */}
-                            {
-                                currentPlayer.is_bank_operator && (
-                                    <BankPanel room={room} players={players} />
-                                )
-                            }
-
-                            {/* Players List */}
-                            <Paper p="md" radius="md" shadow="sm" style={{ background: 'var(--mantine-color-dark-7)' }}>
-                                <Group justify="space-between" mb="sm">
-                                    <Text fw={600}>All Players</Text>
-                                    <Badge variant="light" color="gray">{players.length}</Badge>
-                                </Group>
-                                <Stack gap="xs">
-                                    {players.map((p) => (
-                                        <Menu key={p.id} shadow="md" width={200} position="bottom-end">
-                                            <Menu.Target>
-                                                <Paper p="xs" radius="md" style={{ background: p.id === currentPlayer.id ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)', opacity: p.status === 'defeated' ? 0.6 : 1, cursor: 'pointer' }}>
-                                                    <Group justify="space-between">
-                                                        <Group gap="sm">
-                                                            <Avatar color={p.color} radius="xl" size="sm">{p.nickname[0]}</Avatar>
-                                                            <div>
-                                                                <Group gap="xs">
-                                                                    <Text size="sm" fw={500}>{p.nickname}</Text>
-                                                                    {p.status === 'defeated' && (
-                                                                        <Badge size="xs" color="red" variant="filled">Defeated</Badge>
-                                                                    )}
-                                                                </Group>
-                                                            </div>
-                                                        </Group>
-                                                        <Group gap="xs">
-                                                            <Text size="sm" fw={600}>${p.current_balance}</Text>
-                                                            {p.id !== currentPlayer.id && !isDefeated && p.status !== 'defeated' && (
-                                                                <IconDotsVertical size={16} style={{ opacity: 0.5 }} />
-                                                            )}
-                                                        </Group>
-                                                    </Group>
-                                                </Paper>
-                                            </Menu.Target>
-
-                                            {p.id !== currentPlayer.id && !isDefeated && p.status !== 'defeated' && (
-                                                <Menu.Dropdown>
-                                                    <Menu.Label>Actions for {p.nickname}</Menu.Label>
-                                                    <Menu.Item leftSection={<IconSend size={14} />} onClick={() => {
-                                                        setDefaultRecipientId(p.id);
-                                                        setSendModalOpen(true);
-                                                    }}>
-                                                        Send Money
-                                                    </Menu.Item>
-                                                    <Menu.Item leftSection={<IconDownload size={14} />} onClick={() => {
-                                                        setDefaultRequestPayerId(p.id);
-                                                        setRequestModalOpen(true);
-                                                    }}>
-                                                        Request Money
-                                                    </Menu.Item>
-                                                </Menu.Dropdown>
-                                            )}
-                                        </Menu>
-                                    ))}
-                                </Stack>
-                            </Paper>
-
-                            {/* Recent Activity */}
-                            <Paper p="md" radius="md" shadow="sm" style={{ background: 'var(--mantine-color-dark-7)' }}>
-                                <Text fw={600} mb="sm">Recent Activity</Text>
-                                {(() => {
-                                    const allActivity = [
-                                        ...transactions.map((t: any) => ({
-                                            id: t.id,
-                                            type: 'transaction',
-                                            from: t.from_player?.nickname || 'Bank',
-                                            to: t.to_player?.nickname || 'Bank',
-                                            amount: t.amount,
-                                            description: t.description,
-                                            created_at: t.created_at,
-                                            tx_type: t.type
-                                        })),
-                                        ...paymentRequests
-                                            .filter((pr: any) => pr.status !== 'pending')
-                                            .map((pr: any) => ({
-                                                id: pr.id,
-                                                type: pr.status === 'accepted' ? 'request_accepted' : 'request_rejected',
-                                                from: pr.from_player?.nickname || 'Unknown',
-                                                to: pr.to_player_id ? players.find((p: Player) => p.id === pr.to_player_id)?.nickname || 'Unknown' : 'QR',
-                                                amount: pr.amount,
-                                                description: pr.description,
-                                                created_at: pr.updated_at || pr.created_at
-                                            })),
-                                        ...gameEvents.map((ge: any) => ({
-                                            id: ge.id,
-                                            type: 'dice_roll',
-                                            from: ge.player?.nickname || 'Unknown',
-                                            description: `Rolled ${ge.payload.roll1} + ${ge.payload.roll2} = ${ge.payload.total}`,
-                                            created_at: ge.created_at,
-                                            payload: ge.payload
-                                        }))
-                                    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                                    const itemsPerPage = 8;
-                                    const totalPages = Math.ceil(allActivity.length / itemsPerPage);
-                                    const paginatedActivity = allActivity.slice(activityPage * itemsPerPage, (activityPage + 1) * itemsPerPage);
-
-                                    return (
-                                        <>
-                                            <Stack gap="xs">
-                                                {paginatedActivity.length === 0 ? (
-                                                    <Text size="sm" c="dimmed" ta="center" py="md">No activity yet</Text>
-                                                ) : (
-                                                    paginatedActivity.map((activity: any) => {
-                                                        const timestamp = new Date(activity.created_at);
-                                                        const now = new Date();
-                                                        const diffMs = now.getTime() - timestamp.getTime();
-                                                        const diffMins = Math.floor(diffMs / 60000);
-                                                        const diffHours = Math.floor(diffMins / 60);
-                                                        const diffDays = Math.floor(diffHours / 24);
-
-                                                        let timeAgo = '';
-                                                        if (diffDays > 0) {
-                                                            timeAgo = `${diffDays}d ago`;
-                                                        } else if (diffHours > 0) {
-                                                            timeAgo = `${diffHours}h ago`;
-                                                        } else if (diffMins > 0) {
-                                                            timeAgo = `${diffMins}m ago`;
-                                                        } else {
-                                                            timeAgo = 'Just now';
-                                                        }
-
-                                                        // Visual accents per activity type
-                                                        const isReversal = typeof activity.description === 'string' && activity.description.toUpperCase().startsWith('REVERSAL');
-                                                        const txType = activity.tx_type as string | undefined;
-                                                        let accent: string | undefined;
-                                                        let amountColor: string | undefined;
-                                                        if (activity.type === 'transaction') {
-                                                            if (txType === 'player_to_bank') { accent = 'red'; amountColor = 'red'; }
-                                                            else if (txType === 'bank_to_player') { accent = 'green'; amountColor = 'green'; }
-                                                            else if (txType === 'pot_in' || txType === 'pot_out') { accent = 'grape'; }
-                                                            else { accent = 'blue'; }
-                                                        } else if (activity.type === 'request_rejected') { accent = 'red'; amountColor = 'red'; }
-                                                        else if (activity.type === 'request_accepted') { accent = 'grape'; }
-                                                        else if (activity.type === 'dice_roll') { accent = 'orange'; }
-
-                                                        const amountText = typeof activity.amount === 'number' ? `$${Number(activity.amount).toLocaleString()}` : activity.amount;
-
-                                                        return (
-                                                            <Paper
-                                                                key={activity.id}
-                                                                p="xs"
-                                                                radius="md"
-                                                                withBorder
-                                                                style={{
-                                                                    fontSize: '0.9rem',
-                                                                    borderColor: isReversal ? 'var(--mantine-color-orange-7)' : accent ? `var(--mantine-color-${accent}-7)` : 'var(--mantine-color-dark-4)',
-                                                                    background: isReversal ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)'
-                                                                }}
-                                                            >
-                                                                <Group justify="space-between" align="flex-start">
-                                                                    <Stack gap={2} style={{ flex: 1 }}>
-                                                                        <Group gap="xs" align="center">
-                                                                            {activity.type === 'transaction' && <IconArrowsLeftRight size={14} color={`var(--mantine-color-${accent || 'gray'}-4)`} />}
-                                                                            {activity.type === 'request_accepted' && <IconCheck size={14} color={`var(--mantine-color-${accent || 'grape'}-4)`} />}
-                                                                            {activity.type === 'request_rejected' && <IconX size={14} color={`var(--mantine-color-${accent || 'red'}-4)`} />}
-                                                                            <Text size="sm" c="gray.2">
-                                                                                {activity.type === 'transaction' && `${activity.from} → ${activity.to}`}
-                                                                                {activity.type === 'request_accepted' && `${activity.from} → ${activity.to}`}
-                                                                                {activity.type === 'request_rejected' && `${activity.from} ⇢ ${activity.to}`}
-                                                                                {activity.type === 'dice_roll' && `🎲 ${activity.from} rolled dice`}
-                                                                            </Text>
-                                                                        </Group>
-                                                                        {activity.description && (
-                                                                            <Text size="xs" c={isReversal ? 'orange.4' : 'gray.4'}>{activity.description}</Text>
-                                                                        )}
-                                                                        <Text size="xs" c="dimmed" style={{ fontSize: '0.7rem' }}>
-                                                                            {timeAgo}
-                                                                        </Text>
-                                                                    </Stack>
-                                                                    {activity.type !== 'dice_roll' ? (
-                                                                        <Text size="sm" fw={700} c={amountColor}>
-                                                                            {amountText}
-                                                                        </Text>
-                                                                    ) : (
-                                                                        <Badge size="lg" variant="light" color="orange">
-                                                                            {activity.payload.roll}
-                                                                        </Badge>
-                                                                    )}
-                                                                </Group>
-                                                            </Paper>
-                                                        );
-                                                    })
-                                                )}
-                                            </Stack>
-                                            {totalPages > 1 && (
-                                                <Group justify="center" mt="sm" gap="xs">
-                                                    <Button
-                                                        size="xs"
-                                                        variant="subtle"
-                                                        onClick={() => setActivityPage(p => Math.max(0, p - 1))}
-                                                        disabled={activityPage === 0}
-                                                    >
-                                                        Previous
-                                                    </Button>
-                                                    <Text size="xs" c="dimmed">
-                                                        Page {activityPage + 1} of {totalPages}
-                                                    </Text>
-                                                    <Button
-                                                        size="xs"
-                                                        variant="subtle"
-                                                        onClick={() => setActivityPage(p => Math.min(totalPages - 1, p + 1))}
-                                                        disabled={activityPage === totalPages - 1}
-                                                    >
-                                                        Next
-                                                    </Button>
-                                                </Group>
-                                            )}
-                                        </>
-                                    );
-                                })()}
-                            </Paper>
-                        </Stack>
-                    </Grid.Col>
-                </Grid>
-            </Stack >
-
-            {/* Send Money Modal */}
-            < Modal opened={sendModalOpen} onClose={() => setSendModalOpen(false)
-            } title="Send Money" >
-                <SendMoneyForm
-                    roomId={room.id}
-                    room={room}
-                    players={players}
-                    currentPlayerId={currentPlayer.id}
-                    onClose={() => { setSendModalOpen(false); setDefaultRecipientId(null); }}
-                    modalOpen={sendModalOpen}
-                    initialRecipientId={defaultRecipientId}
-                    onToast={showToast}
-                />
-            </Modal >
-
-            {/* Request Modal */}
-            < Modal opened={requestModalOpen} onClose={() => setRequestModalOpen(false)} title="Request Payment" >
-                <RequestMoneyForm
-                    roomId={room.id}
-                    players={players}
-                    currentPlayerId={currentPlayer.id}
-                    onClose={() => { setRequestModalOpen(false); setDefaultRequestPayerId(null); }}
-                    modalOpen={requestModalOpen}
-                    initialPayerId={defaultRequestPayerId}
-                />
-            </Modal >
-
-            <BankServicesModal
-                opened={bankServicesModalOpen}
-                onClose={() => setBankServicesModalOpen(false)}
-                room={room}
-                currentPlayer={currentPlayer}
-            />
-
-            {/* QR Request Modal */}
-            < Modal opened={qrModalOpen} onClose={() => setQrModalOpen(false)} title="QR Payment Request" >
-                <QRRequestForm
-                    roomCode={room.room_code}
-                    currentPlayerId={currentPlayer.id}
-                />
-            </Modal >
-
-            {/* Scan Modal */}
-            < Modal opened={scanModalOpen} onClose={() => setScanModalOpen(false)} title="Scan QR Code" >
-                <ScanQRForm
-                    onClose={() => setScanModalOpen(false)}
-                    roomId={room.id}
-                    currentPlayerId={currentPlayer.id}
-                />
-            </Modal >
-
-            <Affix position={{ bottom: 20, left: 0, right: 0 }} zIndex={1000} style={{ pointerEvents: 'none' }}>
-                <Container size="xs" style={{ pointerEvents: 'auto' }}>
-                    <Transition transition="slide-up" mounted={!!toast}>
-                        {(styles) => (
-                            <Paper
-                                style={styles}
-                                p="lg"
-                                radius="md"
-                                withBorder
-                                shadow="xl"
-                                bg="var(--mantine-color-dark-7)"
-                            >
-                                <Group>
-                                    <Text size="xl">{toast?.color === 'green' ? '💰' : toast?.color === 'red' ? '⚠️' : '🎲'}</Text>
-                                    <div>
-                                        <Text fw={700} size="lg" c={toast?.color || 'orange'}>{toast?.title}</Text>
-                                        <Text size="md">{toast?.message}</Text>
-                                    </div>
-                                </Group>
-                            </Paper>
-                        )}
-                    </Transition>
-                </Container>
-            </Affix>
-        </Container >
-    );
-}
-
-
-
-
-
-function BankServicesModal({ opened, onClose, room, currentPlayer }: { opened: boolean; onClose: () => void; room: Room; currentPlayer: Player }) {
-    const [activeTab, setActiveTab] = useState<string | null>('loans');
-    const [loans, setLoans] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-
-    // Property Improvement State
-    const [propertyType, setPropertyType] = useState<'property' | 'house' | 'hotel'>('property');
-    const [propertyName, setPropertyName] = useState('');
-    const [amount, setAmount] = useState<number | string | null>(null);
-    const [payLoading, setPayLoading] = useState(false);
-    const [propertyHistory, setPropertyHistory] = useState<any[]>([]);
-
-    const fetchLoans = async () => {
-        setLoading(true);
-        try {
-            const data = await getLoans(room.id);
-            // Filter for current player
-            setLoans(data?.filter((l: any) => l.player_id === currentPlayer.id) || []);
-        } catch (error) {
-            console.error(error);
+          }
+          void refresh();
+        },
+      )
+      .subscribe((status) => {
+        if (active) {
+          setConnection(status === 'SUBSCRIBED' ? 'Live' : 'Reconnecting');
+          if (status === 'SUBSCRIBED') void refresh();
         }
-        setLoading(false);
+      });
+    void refresh();
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
     };
-
-    useEffect(() => {
-        if (opened) {
-            fetchLoans();
-        }
-    }, [opened]);
-
-    const handleRepay = async (loanId: string, repayAmount: number) => {
-        if (!confirm(`Repay $${repayAmount}?`)) return;
-        try {
-            await repayLoan(loanId, repayAmount, room.id);
-            fetchLoans();
-        } catch (error) {
-            console.error(error);
-            alert('Repayment failed. Check funds.');
-        }
-    };
-
-    const handlePropertyTransaction = async () => {
-        if (!amount || !propertyName) return;
-        setPayLoading(true);
-        try {
-            let description = '';
-            switch (propertyType) {
-                case 'property':
-                    description = `Bought Property: ${propertyName}`;
-                    break;
-                case 'house':
-                    description = `Bought House on ${propertyName}`;
-                    break;
-                case 'hotel':
-                    description = `Bought Hotel on ${propertyName}`;
-                    break;
-            }
-
-            await createTransaction(room.id, 'player_to_bank', Number(amount), description, currentPlayer.id, undefined);
-
-            // Add to history
-            setPropertyHistory(prev => [{ type: propertyType, name: propertyName, amount: Number(amount), timestamp: new Date() }, ...prev]);
-
-            // Reset form
-            setPropertyName('');
-            setAmount(null);
-        } catch (error) {
-            console.error(error);
-            alert('Payment failed. Check funds.');
-        }
-        setPayLoading(false);
-    };
-
-    return (
-        <Modal opened={opened} onClose={onClose} title="Bank Services" size="lg">
-            <Tabs value={activeTab} onChange={setActiveTab}>
-                <Tabs.List mb="md">
-                    <Tabs.Tab value="loans" leftSection={<IconCoin size={16} />}>
-                        My Loans
-                    </Tabs.Tab>
-                    <Tabs.Tab value="improvements" leftSection={<IconBuildingEstate size={16} />}>
-                        Property Improvements
-                    </Tabs.Tab>
-                </Tabs.List>
-
-                <Tabs.Panel value="loans">
-                    <Stack gap="md">
-                        <Group justify="flex-end">
-                            <Button variant="subtle" size="xs" leftSection={<IconRefresh size={14} />} onClick={fetchLoans} loading={loading}>
-                                Refresh
-                            </Button>
-                        </Group>
-
-                        {loans.length === 0 ? (
-                            <Text c="dimmed" ta="center" py="xl">You have no active loans.</Text>
-                        ) : (
-                            <ScrollArea h={300}>
-                                <Stack gap="sm">
-                                    {loans.map((loan) => (
-                                        <Paper key={loan.id} p="sm" withBorder>
-                                            <Group justify="space-between" align="flex-start">
-                                                <div>
-                                                    <Text fw={600}>{loan.description}</Text>
-                                                    <Text size="xs" c="dimmed">{new Date(loan.created_at).toLocaleDateString()}</Text>
-                                                </div>
-                                                <Stack align="flex-end" gap="xs">
-                                                    <Text fw={700} size="lg" c="red">-${loan.amount}</Text>
-                                                    <Button size="xs" variant="light" color="blue" onClick={() => handleRepay(loan.id, loan.amount)}>
-                                                        Repay Full
-                                                    </Button>
-                                                </Stack>
-                                            </Group>
-                                        </Paper>
-                                    ))}
-                                </Stack>
-                            </ScrollArea>
-                        )}
-                    </Stack>
-                </Tabs.Panel>
-
-                <Tabs.Panel value="improvements">
-                    <Stack gap="md">
-                        <Paper p="sm" radius="md" style={{ background: 'var(--mantine-color-blue-9)' }}>
-                            <Group>
-                                <IconBuildingEstate color="white" />
-                                <Text size="sm" c="white">Purchase properties, houses, hotels, and other improvements.</Text>
-                            </Group>
-                        </Paper>
-
-                        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                            <Paper
-                                p="md"
-                                radius="md"
-                                withBorder
-                                style={{
-                                    cursor: 'pointer',
-                                    borderWidth: '2px',
-                                    borderColor: propertyType === 'property' ? 'var(--mantine-color-blue-5)' : 'var(--mantine-color-dark-4)',
-                                    backgroundColor: propertyType === 'property' ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)',
-                                    transition: 'all 0.2s ease',
-                                    transform: propertyType === 'property' ? 'scale(1.02)' : 'scale(1)',
-                                    boxShadow: propertyType === 'property' ? '0 0 0 3px rgba(77, 171, 247, 0.2)' : 'none'
-                                }}
-                                onClick={() => setPropertyType('property')}
-                            >
-                                <Stack gap="xs" align="center">
-                                    <IconBuildingEstate size={24} />
-                                    <Text size="sm" fw={600} ta="center" c={propertyType === 'property' ? 'white' : undefined}>
-                                        Buy Property
-                                    </Text>
-                                </Stack>
-                            </Paper>
-
-                            <Paper
-                                p="md"
-                                radius="md"
-                                withBorder
-                                style={{
-                                    cursor: 'pointer',
-                                    borderWidth: '2px',
-                                    borderColor: propertyType === 'house' ? 'var(--mantine-color-green-5)' : 'var(--mantine-color-dark-4)',
-                                    backgroundColor: propertyType === 'house' ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)',
-                                    transition: 'all 0.2s ease',
-                                    transform: propertyType === 'house' ? 'scale(1.02)' : 'scale(1)',
-                                    boxShadow: propertyType === 'house' ? '0 0 0 3px rgba(64, 192, 87, 0.2)' : 'none'
-                                }}
-                                onClick={() => setPropertyType('house')}
-                            >
-                                <Stack gap="xs" align="center">
-                                    <IconHome size={24} />
-                                    <Text size="sm" fw={600} ta="center" c={propertyType === 'house' ? 'white' : undefined}>
-                                        Buy House
-                                    </Text>
-                                </Stack>
-                            </Paper>
-
-                            <Paper
-                                p="md"
-                                radius="md"
-                                withBorder
-                                style={{
-                                    cursor: 'pointer',
-                                    borderWidth: '2px',
-                                    borderColor: propertyType === 'hotel' ? 'var(--mantine-color-grape-5)' : 'var(--mantine-color-dark-4)',
-                                    backgroundColor: propertyType === 'hotel' ? 'var(--mantine-color-dark-5)' : 'var(--mantine-color-dark-6)',
-                                    transition: 'all 0.2s ease',
-                                    transform: propertyType === 'hotel' ? 'scale(1.02)' : 'scale(1)',
-                                    boxShadow: propertyType === 'hotel' ? '0 0 0 3px rgba(190, 75, 219, 0.2)' : 'none'
-                                }}
-                                onClick={() => setPropertyType('hotel')}
-                            >
-                                <Stack gap="xs" align="center">
-                                    <IconBuildingSkyscraper size={24} />
-                                    <Text size="sm" fw={600} ta="center" c={propertyType === 'hotel' ? 'white' : undefined}>
-                                        Buy Hotel
-                                    </Text>
-                                </Stack>
-                            </Paper>
-                        </SimpleGrid>
-
-                        <Stack gap="md">
-                            <TextInput
-                                label={propertyType === 'property' ? 'Property Name' : `Property to build ${propertyType === 'house' ? 'house' : 'hotel'} on`}
-                                placeholder={propertyType === 'property' ? 'e.g., Boardwalk, Park Place' : 'e.g., Boardwalk'}
-                                value={propertyName}
-                                onChange={(e) => setPropertyName(e.target.value)}
-                                required
-                            />
-
-                            <NumberInput
-                                label="Amount"
-                                placeholder="0"
-                                value={amount === null ? '' : amount}
-                                onChange={setAmount}
-                                min={0}
-                                leftSection={<IconCoin size={16} />}
-                                required
-                            />
-                        </Stack>
-
+  }, [
+    supabase,
+    initialRoom.id,
+    initialRoom.room_code,
+    initialPlayer.id,
+    router,
+    muted,
+  ]);
+  function openOperation(
+    nextOperation: Operation,
+    target: string | null = null,
+  ) {
+    setRecipientId(target);
+    setError('');
+    setOperation(nextOperation);
+  }
+  return (
+    <AppShell>
+      <div className="page-heading">
+        <div>
+          <p className="eyebrow text-primary">GAME NIGHT, IN PROGRESS</p>
+          <h1 className="mt-2">{room.room_name}</h1>
+          <div className="flex gap-3 items-center mt-3">
+            <span className="text-sm text-muted-foreground">
+              {room.room_code}
+            </span>
+            <Badge variant="secondary">{connection}</Badge>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <CopyButton value={room.room_code} />
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={muted ? 'Unmute game sounds' : 'Mute game sounds'}
+            onClick={() => {
+              const nextMuted = !muted;
+              setMuted(nextMuted);
+              try {
+                localStorage.setItem('banko_muted', String(nextMuted));
+              } catch {}
+            }}
+          >
+            {muted ? <VolumeX /> : <Volume2 />}
+          </Button>
+        </div>
+      </div>
+      {pendingRequests.length > 0 && (
+        <div className="panel flex items-center justify-between gap-3 mb-6">
+          <p>
+            {pendingRequests.length} payment{' '}
+            {pendingRequests.length === 1 ? 'request needs' : 'requests need'}{' '}
+            your attention.
+          </p>
+          <Button variant="secondary" onClick={() => openOperation('requests')}>
+            Review
+          </Button>
+        </div>
+      )}
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="game-tabs"
+      >
+        <TabsList>
+          <TabsTrigger value="wallet">
+            <Wallet /> Wallet
+          </TabsTrigger>
+          <TabsTrigger value="players">
+            <Users /> Players
+          </TabsTrigger>
+          <TabsTrigger value="activity">
+            <Activity /> Activity
+          </TabsTrigger>
+          {player.is_bank_operator && (
+            <TabsTrigger value="bank">
+              <Landmark /> Bank
+            </TabsTrigger>
+          )}
+        </TabsList>
+        <TabsContent value="wallet">
+          <div className="wallet-layout">
+            <section>
+              <PlayerBalanceCard
+                bankName={room.bank_display_name}
+                holderName={player.nickname}
+                color={player.color}
+                balance={player.current_balance}
+                roomCode={room.room_code}
+                isDefeated={defeated}
+                onShowQr={defeated ? undefined : () => openOperation('qr')}
+              />
+              <div className="wallet-actions">
+                <button
+                  disabled={defeated}
+                  onClick={() => openOperation('send')}
+                >
+                  <Send size={22} />
+                  Send
+                </button>
+                <button
+                  disabled={defeated}
+                  onClick={() => openOperation('request')}
+                >
+                  <ArrowDownLeft size={22} />
+                  Request
+                </button>
+                <button
+                  disabled={defeated}
+                  onClick={() => openOperation('scan')}
+                >
+                  <ScanLine size={22} />
+                  Scan
+                </button>
+                <button disabled={defeated} onClick={() => openOperation('qr')}>
+                  <QrCode size={22} />
+                  My QR
+                </button>
+              </div>
+              {defeated && (
+                <p className="error-message mt-4">
+                  You are defeated. You can still follow the table.
+                </p>
+              )}
+              <div className="pot-summary">
+                <span className="flex items-center gap-2 text-sm">
+                  <Trophy size={18} className="text-primary" /> Shared pot
+                </span>
+                <span className="money">
+                  {formatMoney(room.shared_pot_balance)}
+                </span>
+              </div>
+              <div className="flex gap-2 mt-4 flex-wrap">
+                <Button
+                  variant="ghost"
+                  disabled={defeated}
+                  onClick={() => openOperation('services')}
+                >
+                  <Landmark /> Bank services
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={defeated || pending}
+                  onClick={async () => {
+                    setPending(true);
+                    try {
+                      const result = await rollDice(room.id, player.id, 6);
+                      toast('Dice rolled', {
+                        description:
+                          result.roll1 +
+                          ' + ' +
+                          result.roll2 +
+                          ' = ' +
+                          result.total,
+                      });
+                    } catch (failure) {
+                      toast.error(
+                        failure instanceof Error
+                          ? failure.message
+                          : 'Dice roll failed',
+                      );
+                    } finally {
+                      setPending(false);
+                    }
+                  }}
+                >
+                  <Dice5 />
+                  {pending ? 'Rolling...' : 'Roll 2d6'}
+                </Button>
+              </div>
+            </section>
+            <section>
+              <div className="section-heading">
+                <h2>Recent activity</h2>
+                <Button
+                  variant="ghost"
+                  onClick={() => setActiveTab('activity')}
+                >
+                  View all
+                </Button>
+              </div>
+              <ActivityFeed
+                transactions={transactions}
+                requests={requests}
+                events={gameEvents}
+                limit={5}
+              />
+            </section>
+          </div>
+        </TabsContent>
+        <TabsContent value="players">
+          <div className="section-heading">
+            <h2>Your table</h2>
+            <Badge variant="secondary">{players.length} players</Badge>
+          </div>
+          {players.map((tablePlayer) => (
+            <div className="player-row" key={tablePlayer.id}>
+              <div className="player-identity">
+                <PlayerAvatar player={tablePlayer} />
+                <div>
+                  <p className="break-words">
+                    {tablePlayer.nickname}
+                    {tablePlayer.id === player.id ? ' (you)' : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {tablePlayer.status === 'defeated'
+                      ? 'Defeated'
+                      : tablePlayer.is_bank_operator
+                        ? 'Banker'
+                        : 'Player'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="money text-sm">
+                  {formatMoney(tablePlayer.current_balance)}
+                </span>
+                {tablePlayer.id !== player.id &&
+                  tablePlayer.status !== 'defeated' &&
+                  !defeated && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <Button
-                            fullWidth
-                            size="lg"
-                            color={propertyType === 'property' ? 'blue' : propertyType === 'house' ? 'green' : 'grape'}
-                            onClick={handlePropertyTransaction}
-                            loading={payLoading}
-                            disabled={!amount || !propertyName}
+                          variant="ghost"
+                          size="icon"
+                          aria-label={'Actions for ' + tablePlayer.nickname}
                         >
-                            {propertyType === 'property' ? 'Buy Property' : propertyType === 'house' ? 'Buy House' : 'Buy Hotel'} - ${amount || 0}
+                          <MoreHorizontal />
                         </Button>
-
-                        {propertyHistory.length > 0 && (
-                            <>
-                                <Text size="sm" fw={600} mt="md">Recent Property Purchases</Text>
-                                <ScrollArea h={150}>
-                                    <Stack gap="xs">
-                                        {propertyHistory.map((item, idx) => (
-                                            <Paper key={idx} p="xs" withBorder>
-                                                <Group justify="space-between">
-                                                    <Stack gap={0}>
-                                                        <Text size="sm" fw={500}>
-                                                            {item.type === 'property' ? '🏘️' : item.type === 'house' ? '🏠' : '🏨'} {item.name}
-                                                        </Text>
-                                                        <Text size="xs" c="dimmed">
-                                                            {item.type === 'property' ? 'Property' : item.type === 'house' ? 'House' : 'Hotel'}
-                                                        </Text>
-                                                    </Stack>
-                                                    <Text size="sm" fw={600}>${item.amount}</Text>
-                                                </Group>
-                                            </Paper>
-                                        ))}
-                                    </Stack>
-                                </ScrollArea>
-                            </>
-                        )}
-                    </Stack>
-                </Tabs.Panel>
-            </Tabs>
-        </Modal>
-    );
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent>
+                        <DropdownMenuItem
+                          onSelect={() => openOperation('send', tablePlayer.id)}
+                        >
+                          <Send /> Send money
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            openOperation('request', tablePlayer.id)
+                          }
+                        >
+                          <ArrowDownLeft /> Request money
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+              </div>
+            </div>
+          ))}
+        </TabsContent>
+        <TabsContent value="activity">
+          <h2 className="mb-4">Table activity</h2>
+          <p className="text-sm text-muted-foreground">
+            Latest payments, requests and dice rolls.
+          </p>
+          <ActivityFeed
+            transactions={transactions}
+            requests={requests}
+            events={gameEvents}
+          />
+        </TabsContent>
+        {player.is_bank_operator && (
+          <TabsContent value="bank">
+            <BankPanel room={room} players={players} />
+          </TabsContent>
+        )}
+      </Tabs>
+      <OperationSheet
+        open={operation !== null}
+        onClose={() => {
+          if (!pending) setOperation(null);
+        }}
+        title={
+          operation === 'send'
+            ? 'Send money'
+            : operation === 'request'
+              ? 'Request money'
+              : operation === 'qr'
+                ? 'Your payment QR'
+                : operation === 'scan'
+                  ? 'Scan to pay'
+                  : operation === 'services'
+                    ? 'Bank services'
+                    : 'Payment requests'
+        }
+      >
+        {defeated && operation !== 'requests' && (
+          <p className="error-message" role="alert">
+            You are defeated. Your banker can restore your player status.
+          </p>
+        )}
+        {!defeated && (operation === 'send' || operation === 'request') && (
+          <SendMoneyForm
+            key={operation + recipientId}
+            room={room}
+            players={players}
+            currentPlayerId={player.id}
+            initialRecipientId={recipientId}
+            requesting={operation === 'request'}
+            onClose={() => setOperation(null)}
+            onPendingChange={setPending}
+          />
+        )}
+        {!defeated && operation === 'qr' && (
+          <QRRequestForm
+            roomCode={room.room_code}
+            currentPlayerId={player.id}
+          />
+        )}
+        {!defeated && operation === 'scan' && (
+          <ScanQRForm roomCode={room.room_code} />
+        )}
+        {!defeated && operation === 'services' && (
+          <BankServices room={room} player={player} />
+        )}
+        {operation === 'requests' && (
+          <div className="form-stack">
+            {error && (
+              <p className="error-message" role="alert">
+                {error}
+              </p>
+            )}
+            {pendingRequests.length === 0 && <p>You are all caught up.</p>}
+            {pendingRequests.map((request) => (
+              <div className="panel form-stack" key={request.id}>
+                <p>
+                  <strong>{request.from_player.nickname}</strong> requests{' '}
+                  <span className="money">{formatMoney(request.amount)}</span>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {request.description}
+                </p>
+                <div className="flex gap-2">
+                  {(['rejected', 'accepted'] as const).map((response) => (
+                    <Button
+                      key={response}
+                      variant={
+                        response === 'accepted' ? 'default' : 'secondary'
+                      }
+                      disabled={pending || defeated}
+                      onClick={async () => {
+                        setPending(true);
+                        setError('');
+                        try {
+                          await respondToPaymentRequest(
+                            request.id,
+                            response,
+                            player.id,
+                            room.room_code,
+                          );
+                          toast.success(
+                            response === 'accepted'
+                              ? 'Request paid'
+                              : 'Request declined',
+                          );
+                          setRequests((previous) =>
+                            previous.map((candidate) =>
+                              candidate.id === request.id
+                                ? { ...candidate, status: response }
+                                : candidate,
+                            ),
+                          );
+                        } catch (failure) {
+                          setError(
+                            failure instanceof Error
+                              ? failure.message
+                              : 'Could not process request.',
+                          );
+                        } finally {
+                          setPending(false);
+                        }
+                      }}
+                    >
+                      {response === 'accepted'
+                        ? 'Pay ' + formatMoney(request.amount)
+                        : 'Decline'}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </OperationSheet>
+    </AppShell>
+  );
 }
