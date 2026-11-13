@@ -15,8 +15,10 @@ CREATE TABLE IF NOT EXISTS game_events (
 ALTER TABLE game_events ENABLE ROW LEVEL SECURITY;
 
 -- Policies for game_events
+DROP POLICY IF EXISTS "Enable read access for all users" ON game_events;
 CREATE POLICY "Enable read access for all users" ON game_events FOR SELECT USING (true);
-CREATE POLICY "Enable insert for authenticated users only" ON game_events FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON game_events;
+CREATE POLICY "Enable insert for authenticated users only" ON game_events FOR INSERT WITH CHECK (auth.role() = 'authenticated' OR auth.role() = 'anon');
 
 -- Grant permissions
 GRANT ALL ON game_events TO postgres;

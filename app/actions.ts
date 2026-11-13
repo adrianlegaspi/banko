@@ -360,21 +360,24 @@ export async function respondToPaymentRequest(
 export async function rollDice(
   roomId: string,
   playerId: string,
-  sides: number
+  sides: number = 6
 ) {
   const adminAuthClient = createAdminClient();
 
-  const roll = Math.floor(Math.random() * sides) + 1;
+  // Roll two dice for Monopoly
+  const roll1 = Math.floor(Math.random() * sides) + 1;
+  const roll2 = Math.floor(Math.random() * sides) + 1;
+  const total = roll1 + roll2;
 
   const { error } = await adminAuthClient.from("game_events").insert({
     room_id: roomId,
     player_id: playerId,
     event_type: "dice_roll",
-    payload: { roll, sides },
+    payload: { roll1, roll2, total, sides },
   });
 
   if (error) throw new Error(error.message);
-  return roll;
+  return { roll1, roll2, total };
 }
 
 export async function updatePlayerStatus(
@@ -566,4 +569,259 @@ export async function createGuestAccount() {
   if (error) throw new Error(error.message);
 
   return { email, password };
+}
+
+// --- BOARD GAME ACTIONS ---
+
+export async function movePlayer(
+  roomCode: string,
+  playerId: string,
+  newPosition: number,
+  passedGo: boolean = false
+) {
+  const adminAuthClient = createAdminClient();
+
+  // Update player position
+  const { error: updateError } = await adminAuthClient
+    .from("player_status")
+    .update({
+      position: newPosition,
+      has_passed_start: passedGo || undefined,
+    })
+    .eq("room_code", roomCode)
+    .eq("player_id", playerId);
+
+  if (updateError) throw updateError;
+
+  // If passed GO, automatically give salary
+  if (passedGo) {
+    const room = await getRoomByCode(roomCode);
+    if (room) {
+      await createTransaction(
+        room.id,
+        "bank_to_player",
+        room.salary_amount,
+        "Salary for passing GO",
+        undefined,
+        playerId
+      );
+    }
+  }
+
+  return { success: true };
+}
+
+export async function buyProperty(
+  roomCode: string,
+  playerId: string,
+  tileId: number,
+  price: number
+) {
+  const adminAuthClient = createAdminClient();
+  const room = await getRoomByCode(roomCode);
+  if (!room) throw new Error("Room not found");
+
+  // Check if property is already owned
+  const { data: existing } = await adminAuthClient
+    .from("property_ownership")
+    .select("*")
+    .eq("room_code", roomCode)
+    .eq("tile_id", tileId)
+    .single();
+
+  if (existing) {
+    throw new Error("Property already owned");
+  }
+
+  // Create ownership record
+  const { error: ownershipError } = await adminAuthClient
+    .from("property_ownership")
+    .insert({
+      room_code: roomCode,
+      player_id: playerId,
+      tile_id: tileId,
+      purchase_price: price,
+    });
+
+  if (ownershipError) throw ownershipError;
+
+  // Create payment transaction
+  await createTransaction(
+    room.id,
+    "player_to_bank",
+    price,
+    `Purchased property`,
+    playerId,
+    undefined
+  );
+
+  return { success: true };
+}
+
+export async function payRent(
+  roomCode: string,
+  fromPlayerId: string,
+  toPlayerId: string,
+  amount: number,
+  propertyName: string
+) {
+  const room = await getRoomByCode(roomCode);
+  if (!room) throw new Error("Room not found");
+
+  await createTransaction(
+    room.id,
+    "player_to_player",
+    amount,
+    `Rent payment for ${propertyName}`,
+    fromPlayerId,
+    toPlayerId
+  );
+
+  return { success: true };
+}
+
+export async function getPropertyOwnerships(roomCode: string) {
+  const adminAuthClient = createAdminClient();
+  const { data } = await adminAuthClient
+    .from("property_ownership")
+    .select("*")
+    .eq("room_code", roomCode);
+  return data || [];
+}
+
+export async function getPlayerBoardState(roomCode: string) {
+  const adminAuthClient = createAdminClient();
+  const { data } = await adminAuthClient
+    .from("player_status")
+    .select("*")
+    .eq("room_code", roomCode);
+  return data || [];
+}
+
+export async function sendToJail(roomCode: string, playerId: string) {
+  const adminAuthClient = createAdminClient();
+
+  const { error } = await adminAuthClient
+    .from("player_status")
+    .update({
+      position: 10, // Jail position
+      is_jailed: true,
+      jail_turns_left: 3,
+      doubles_count: 0,
+    })
+    .eq("room_code", roomCode)
+    .eq("player_id", playerId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function payJailBail(roomCode: string, playerId: string) {
+  const adminAuthClient = createAdminClient();
+  const room = await getRoomByCode(roomCode);
+  if (!room) throw new Error("Room not found");
+
+  // Pay bail
+  await createTransaction(
+    room.id,
+    "player_to_bank",
+    50,
+    "Jail bail payment",
+    playerId,
+    undefined
+  );
+
+  // Release from jail
+  const { error } = await adminAuthClient
+    .from("player_status")
+    .update({
+      is_jailed: false,
+      jail_turns_left: 0,
+    })
+    .eq("room_code", roomCode)
+    .eq("player_id", playerId);
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function drawEventCard(roomCode: string) {
+  const adminAuthClient = createAdminClient();
+
+  // Get all active event cards
+  const { data: cards } = await adminAuthClient
+    .from("event_cards")
+    .select("*")
+    .eq("is_active", true);
+
+  if (!cards || cards.length === 0) {
+    throw new Error("No event cards available");
+  }
+
+  // Pick a random card
+  const randomCard = cards[Math.floor(Math.random() * cards.length)];
+  return randomCard;
+}
+
+export async function buyImprovement(
+  roomCode: string,
+  playerId: string,
+  tileId: number,
+  type: "house" | "hotel",
+  cost: number
+) {
+  const adminAuthClient = createAdminClient();
+  const room = await getRoomByCode(roomCode);
+  if (!room) throw new Error("Room not found");
+
+  // Get current ownership
+  const { data: ownership } = await adminAuthClient
+    .from("property_ownership")
+    .select("*")
+    .eq("room_code", roomCode)
+    .eq("tile_id", tileId)
+    .eq("player_id", playerId)
+    .single();
+
+  if (!ownership) {
+    throw new Error("You do not own this property");
+  }
+
+  // Update property improvements
+  let updateData: any = {};
+  if (type === "house") {
+    if (ownership.houses >= 4) {
+      throw new Error("Maximum houses already built");
+    }
+    updateData = { houses: ownership.houses + 1 };
+  } else {
+    if (ownership.hotels >= 1) {
+      throw new Error("Hotel already built");
+    }
+    if (ownership.houses < 4) {
+      throw new Error("Need 4 houses before building a hotel");
+    }
+    updateData = { houses: 0, hotels: 1 };
+  }
+
+  const { error } = await adminAuthClient
+    .from("property_ownership")
+    .update(updateData)
+    .eq("room_code", roomCode)
+    .eq("tile_id", tileId)
+    .eq("player_id", playerId);
+
+  if (error) throw error;
+
+  // Create payment transaction
+  await createTransaction(
+    room.id,
+    "player_to_bank",
+    cost,
+    `Built ${type} on property`,
+    playerId,
+    undefined
+  );
+
+  return { success: true };
 }

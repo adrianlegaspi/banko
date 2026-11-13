@@ -155,7 +155,7 @@ export default function ScanQRForm({ onClose, roomId, currentPlayerId }: ScanQRF
                     <Text c="red" size="sm" ta="center">{error}</Text>
                     {error.includes('HTTPS') && (
                         <Text size="xs" c="dimmed" ta="center">
-                            Access the app via localhost:3000 or use HTTPS to enable camera
+                            Access the app via localhost:3331 or use HTTPS to enable camera
                         </Text>
                     )}
                 </Stack>

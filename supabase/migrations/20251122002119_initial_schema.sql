@@ -83,10 +83,27 @@ create policy "Public insert access" on payment_requests for insert with check (
 create policy "Public update access" on payment_requests for update using (auth.role() = 'anon' or auth.role() = 'authenticated');
 
 -- REALTIME SETUP
-begin;
-  drop publication if exists supabase_realtime;
-  create publication supabase_realtime for table rooms, players, transactions, payment_requests;
-commit;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END $$;
+
+DO $$
+DECLARE
+  tbl text;
+  tables text[] := ARRAY['rooms', 'players', 'transactions', 'payment_requests'];
+BEGIN
+  FOREACH tbl IN ARRAY tables LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables 
+      WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = tbl
+    ) THEN
+      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', tbl);
+    END IF;
+  END LOOP;
+END $$;
 
 -- RPC: perform_transaction
 -- Handles money movement atomically

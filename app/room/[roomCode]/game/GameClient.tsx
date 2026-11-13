@@ -8,13 +8,15 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { Room, Player } from '@/app/actions';
-import { createTransaction, respondToPaymentRequest, rollDice, getLoans, repayLoan } from '@/app/actions';
+import { createTransaction, respondToPaymentRequest, rollDice, getLoans, repayLoan, movePlayer, payRent, buyProperty, getPropertyOwnerships, getPlayerBoardState, drawEventCard, sendToJail } from '@/app/actions';
 import BankPanel from '@/components/BankPanel';
 import SendMoneyForm from '@/components/game/SendMoneyForm';
 import RequestMoneyForm from '@/components/game/RequestMoneyForm';
 import QRRequestForm from '@/components/game/QRRequestForm';
 import PlayerBalanceCard from '@/components/game/PlayerBalanceCard';
 import ScanQRForm from '@/components/game/ScanQRForm';
+import { MonopolyBoard } from '@/components/MonopolyBoard';
+import { BOARD_TILES, getTileByIndex, PropertyTile, calculateRent, calculateRailroadRent, calculateUtilityRent, getPropertiesByIndustry } from '@/utils/boardData';
 
 type Transaction = any;
 type ToastMessage = { title: string; message: string; color: string };
@@ -46,10 +48,31 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     const audioContextRef = useRef<AudioContext | null>(null);
     const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [muted, setMuted] = useState(false);
+    const [propertyOwnerships, setPropertyOwnerships] = useState<any[]>([]);
+    const [playerBoardState, setPlayerBoardState] = useState<any[]>([]);
+    const [propertyActionModal, setPropertyActionModal] = useState<{ open: boolean; tile?: any; action?: 'buy' | 'payRent' }>({ open: false });
+    const [eventCardModal, setEventCardModal] = useState<{ open: boolean; card?: any }>({ open: false });
 
     useEffect(() => {
         playersRef.current = players;
     }, [players]);
+
+    // Load board state on mount
+    useEffect(() => {
+        const loadBoardData = async () => {
+            try {
+                const [ownerships, boardState] = await Promise.all([
+                    getPropertyOwnerships(room.room_code),
+                    getPlayerBoardState(room.room_code)
+                ]);
+                setPropertyOwnerships(ownerships);
+                setPlayerBoardState(boardState);
+            } catch (error) {
+                console.error('Error loading board data:', error);
+            }
+        };
+        loadBoardData();
+    }, [room.room_code]);
 
     const router = useRouter();
 
@@ -79,7 +102,115 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
     // Memoize supabase client to prevent re-creation on every render
     const supabase = useMemo(() => createClient(), []);
 
-    // Initialize audio context on first user interaction
+    // Handle landing on a tile after dice roll
+    const handleLandingOnTile = async (position: number) => {
+        const tile = getTileByIndex(position);
+        if (!tile) return;
+
+        const ownership = propertyOwnerships.find(o => o.tile_id === tile.id);
+
+        switch (tile.type) {
+            case 'property':
+            case 'railroad':
+            case 'utility':
+                if (!ownership) {
+                    // Property is unowned - show buy option
+                    setPropertyActionModal({ open: true, tile, action: 'buy' });
+                } else if (ownership.player_id !== currentPlayer.id) {
+                    // Property is owned by another player - pay rent
+                    const owner = players.find(p => p.id === ownership.player_id);
+                    if (owner) {
+                        let rentAmount = 0;
+
+                        if (tile.type === 'property') {
+                            const propTile = tile as PropertyTile;
+                            const sameIndustryProps = getPropertiesByIndustry(propTile.industry);
+                            const ownedIndustryProps = sameIndustryProps.filter(p =>
+                                propertyOwnerships.some(o => o.tile_id === p.id && o.player_id === ownership.player_id)
+                            );
+                            const ownsFullSet = ownedIndustryProps.length === sameIndustryProps.length;
+                            rentAmount = calculateRent(propTile, ownsFullSet, ownership.houses || 0, ownership.hotels || 0);
+                        } else if (tile.type === 'railroad') {
+                            const ownedRailroads = propertyOwnerships.filter(o =>
+                                o.player_id === ownership.player_id &&
+                                BOARD_TILES.find(t => t.id === o.tile_id)?.type === 'railroad'
+                            ).length;
+                            rentAmount = calculateRailroadRent(ownedRailroads);
+                        } else if (tile.type === 'utility') {
+                            const lastDiceRoll = gameEvents.find(e => e.event_type === 'dice_roll')?.payload?.total || 0;
+                            const ownedUtilities = propertyOwnerships.filter(o =>
+                                o.player_id === ownership.player_id &&
+                                BOARD_TILES.find(t => t.id === o.tile_id)?.type === 'utility'
+                            ).length;
+                            rentAmount = calculateUtilityRent(ownedUtilities, lastDiceRoll);
+                        }
+
+                        // Auto-pay rent
+                        await payRent(room.room_code, currentPlayer.id, ownership.player_id, rentAmount, tile.name);
+                        showToast({
+                            title: 'Rent Paid',
+                            message: `Paid $${rentAmount} to ${owner.nickname} for ${tile.name}`,
+                            color: 'yellow'
+                        });
+                    }
+                }
+                break;
+
+            case 'event':
+                // Draw an event card
+                try {
+                    const card = await drawEventCard(room.room_code);
+                    setEventCardModal({ open: true, card });
+                } catch (error) {
+                    console.error('Error drawing event card:', error);
+                }
+                break;
+
+            case 'go_to_jail':
+                // Send player to jail
+                await sendToJail(room.room_code, currentPlayer.id);
+                showToast({
+                    title: 'Go to Jail!',
+                    message: 'You have been sent to jail',
+                    color: 'red'
+                });
+                break;
+
+            case 'tax':
+                // Auto-pay tax
+                if (tile.amount) {
+                    await createTransaction(
+                        room.id,
+                        'player_to_bank',
+                        tile.amount,
+                        tile.name,
+                        currentPlayer.id,
+                        undefined
+                    );
+                    showToast({
+                        title: 'Tax Paid',
+                        message: `Paid $${tile.amount} for ${tile.name}`,
+                        color: 'orange'
+                    });
+                }
+                break;
+
+            default:
+                // Free parking, jail (visiting), GO - no action needed
+                break;
+        }
+    };
+
+    // Handle board tile clicks
+    const handleTileClick = (tile: any) => {
+        // Show property details or allow buying upgrades if owned by current player
+        const ownership = propertyOwnerships.find(o => o.tile_id === tile.id);
+        if (ownership && ownership.player_id === currentPlayer.id && tile.type === 'property') {
+            // Open property management modal
+            // TODO: Implement property upgrade modal
+        }
+    };
+
     const initAudioContext = () => {
         if (!audioContextRef.current) {
             const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -210,12 +341,12 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                 if (newEvent.event_type === 'dice_roll') {
                     const player = playersRef.current.find(p => p.id === newEvent.player_id);
                     const nickname = player ? player.nickname : 'Unknown Player';
-                    const roll = newEvent.payload.roll;
+                    const { roll1, roll2, total } = newEvent.payload;
                     const sides = newEvent.payload.sides;
 
                     showToast({
                         title: 'Dice Roll!',
-                        message: `${nickname} rolled a ${roll} (d${sides})`,
+                        message: `${nickname} rolled ${roll1} + ${roll2} = ${total}`,
                         color: 'orange'
                     });
 
@@ -433,7 +564,46 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                 initAudioContext();
                                                 setRolling(true);
                                                 try {
-                                                    await rollDice(room.id, currentPlayer.id, room.dice_sides || 12);
+                                                    const result = await rollDice(room.id, currentPlayer.id, 6);
+
+                                                    // Move player on board after dice roll
+                                                    if (result) {
+                                                        const currentPlayerState = playerBoardState.find(p => p.player_id === currentPlayer.id);
+                                                        const currentPos = currentPlayerState?.position || 0;
+                                                        const diceTotal = result.total;
+                                                        const newPosition = (currentPos + diceTotal) % 40;
+                                                        const passedGo = currentPos + diceTotal >= 40;
+
+                                                        await movePlayer(room.room_code, currentPlayer.id, newPosition, passedGo);
+
+                                                        // Handle landing on tile
+                                                        await handleLandingOnTile(newPosition);
+
+                                                        // Update local board state so the token moves immediately
+                                                        setPlayerBoardState((prev) => {
+                                                            const existing = prev.find(p => p.player_id === currentPlayer.id);
+                                                            if (existing) {
+                                                                return prev.map(p =>
+                                                                    p.player_id === currentPlayer.id
+                                                                        ? { ...p, position: newPosition }
+                                                                        : p
+                                                                );
+                                                            }
+                                                            return [
+                                                                ...prev,
+                                                                {
+                                                                    player_id: currentPlayer.id,
+                                                                    position: newPosition,
+                                                                    is_jailed: false,
+                                                                },
+                                                            ];
+                                                        });
+
+                                                        // Check for doubles and jail
+                                                        if (result.roll1 === result.roll2 && result.roll2) {
+                                                            // Handle doubles logic
+                                                        }
+                                                    }
                                                 } catch (e) {
                                                     console.error(e);
                                                 }
@@ -452,7 +622,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                                     <IconSquare size={28} color="white" />
                                                     <Text fw={600} c="white">Roll Dice</Text>
                                                 </Group>
-                                                <Text size="sm" c="white" opacity={0.8}>d{room.dice_sides || 12}</Text>
+                                                <Text size="sm" c="white" opacity={0.8}>2d6</Text>
                                             </Stack>
                                         </Paper>
                                     </SimpleGrid>
@@ -476,6 +646,24 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
 
                     <Grid.Col span={{ base: 12, md: 7, lg: 8 }}>
                         <Stack gap="md">
+                            {/* Monopoly Board */}
+                            <MonopolyBoard
+                                players={players.map(p => {
+                                    const boardState = playerBoardState.find(ps => ps.player_id === p.id);
+                                    return {
+                                        id: p.id,
+                                        name: p.nickname,
+                                        color: p.color,
+                                        position: boardState?.position || 0,
+                                        is_jailed: boardState?.is_jailed || false,
+                                        money: p.current_balance,
+                                    };
+                                })}
+                                currentPlayerId={currentPlayer.id}
+                                propertyOwnerships={propertyOwnerships}
+                                onTileClick={handleTileClick}
+                            />
+
                             {/* Bank Panel (Operator Only) */}
                             {
                                 currentPlayer.is_bank_operator && (
@@ -568,7 +756,7 @@ export default function GameClient({ room, currentPlayer, players: initialPlayer
                                             id: ge.id,
                                             type: 'dice_roll',
                                             from: ge.player?.nickname || 'Unknown',
-                                            description: `Rolled a ${ge.payload.roll} (d${ge.payload.sides})`,
+                                            description: `Rolled ${ge.payload.roll1} + ${ge.payload.roll2} = ${ge.payload.total}`,
                                             created_at: ge.created_at,
                                             payload: ge.payload
                                         }))
