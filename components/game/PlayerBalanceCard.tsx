@@ -28,7 +28,7 @@ export default function PlayerBalanceCard({
       <div className="card-circle card-circle-bottom" aria-hidden="true" />
       <div className="card-top">
         <div>
-          <p className="card-bank">{bankName || 'The Bank'}</p>
+          <p className="card-bank" title={bankName || 'The Bank'}>{bankName || 'The Bank'}</p>
           <p className="card-caption">GAME NIGHT DEBIT</p>
         </div>
         {onShowQr ? (
@@ -50,7 +50,7 @@ export default function PlayerBalanceCard({
       <div className="card-bottom">
         <div>
           <p className="card-caption">Card holder</p>
-          <p className="card-holder">
+          <p className="card-holder" title={holderName || 'Your name here'}>
             {holderName || 'Your name here'}
             {isDefeated && <span className="ml-2 text-sm">(Defeated)</span>}
           </p>

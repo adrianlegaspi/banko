@@ -45,7 +45,7 @@ test(
     await writeFile(new URL('page.tsx', fixtureDirectory), reviewPageSource, {
       flag: 'wx',
     });
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, channel: process.env.BANKO_BROWSER_CHANNEL || undefined });
     try {
       const page = await browser.newPage({
         viewport: { width: 390, height: 844 },
@@ -54,6 +54,7 @@ test(
       page.on('pageerror', (error) => errors.push(error.message));
       let currentRoom = { ...room };
       let currentPlayers = players.map((player) => ({ ...player }));
+      let activityCount = 1;
       const sockets = [];
       const handleRequest = async (route) => {
         const request = route.request();
@@ -103,6 +104,9 @@ test(
               payload: { roll1: 3, roll2: 4, total: 7, sides: 6 },
             },
           ];
+        if (requestUrl.pathname.includes('/game_events')) {
+          response = Array.from({ length: activityCount }, (_, index) => ({ ...response[0], id: 'event-' + index }));
+        }
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -143,7 +147,7 @@ test(
         });
       };
       await page.routeWebSocket(/realtime/, handleSocket);
-      const baseUrl = 'http://localhost:3331';
+      const baseUrl = process.env.BANKO_BROWSER_URL || 'http://localhost:3331';
       await page.goto(baseUrl + '/create');
       await page.getByLabel('Room name', { exact: true }).fill('Test table');
       await page
@@ -352,6 +356,58 @@ test(
       await page.getByRole('button', { name: 'Pay now' }).click();
       await page.locator('.error-message, .copy-fallback').waitFor();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      for (const viewport of [
+        { width: 320, height: 568 }, { width: 360, height: 640 },
+        { width: 390, height: 844 }, { width: 568, height: 320 },
+        { width: 667, height: 375 }, { width: 768, height: 1024 },
+        { width: 1366, height: 768 }, { width: 1902, height: 924 },
+      ]) {
+        await page.setViewportSize(viewport);
+        for (const role of ['', '?view=rival']) {
+          await page.goto(baseUrl + '/ui-review' + role);
+          await page.getByText('Live', { exact: true }).waitFor();
+          for (const tab of role ? ['Wallet', 'Players', 'Activity'] : ['Wallet', 'Players', 'Activity', 'Bank']) {
+            await page.getByRole('tab', { name: tab, exact: true }).focus();
+            await page.getByRole('tab', { name: tab, exact: true }).press('Enter');
+            const overflow = await page.evaluate(() => ({
+              horizontal: document.documentElement.scrollWidth > innerWidth,
+              vertical: document.documentElement.scrollHeight > innerHeight,
+            }));
+            assert.deepEqual(overflow, { horizontal: false, vertical: false }, tab + JSON.stringify(viewport));
+            if (tab === 'Wallet') {
+              const outside = await page.locator('.wallet-actions button, .wallet-services button, [role="tab"]').evaluateAll(controls => controls.filter(control => {
+                const bounds = control.getBoundingClientRect();
+                return bounds.top < 0 || bounds.bottom > innerHeight || bounds.left < 0 || bounds.right > innerWidth;
+              }).map(control => control.textContent));
+              assert.deepEqual(outside, [], JSON.stringify(viewport));
+              await page.screenshot({ path: '.next/room-' + viewport.width + '-' + viewport.height + (role ? '-player' : '-banker') + '.png' });
+            }
+          }
+        }
+      }
+      currentRoom = { ...room, room_name: 'A very long room name '.repeat(4), bank_display_name: 'A very long bank name '.repeat(3) };
+      currentPlayers = Array.from({ length: 24 }, (_, index) => ({ ...players[index % 2], id: index === 0 ? 'player-1' : 'guest-' + index, nickname: 'Long player name '.repeat(3) + index, current_balance: 999999999999, status: index === 0 ? 'defeated' : 'active' }));
+      activityCount = 40;
+      for (const viewport of [{ width: 320, height: 568 }, { width: 568, height: 320 }]) {
+        await page.setViewportSize(viewport);
+        await page.goto(baseUrl + '/ui-review');
+        await page.getByRole('heading', { name: currentRoom.room_name, exact: true }).waitFor();
+        assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true);
+        const outside = await page.locator('.wallet-actions button, .wallet-services button').evaluateAll(controls => controls.some(control => control.getBoundingClientRect().bottom > innerHeight));
+        assert.equal(outside, false, 'Defeated wallet ' + JSON.stringify(viewport));
+        for (const tab of ['Players', 'Activity', 'Bank']) {
+          await page.getByRole('tab', { name: tab, exact: true }).focus();
+          await page.getByRole('tab', { name: tab, exact: true }).press('Enter');
+          const panel = page.locator('[data-slot="tabs-content"][data-state="active"]');
+          await panel.evaluate(element => { element.scrollTop = element.scrollHeight; });
+          assert.equal(await page.evaluate(() => scrollY === 0 && document.documentElement.scrollHeight === innerHeight && document.documentElement.scrollWidth === innerWidth), true, tab + JSON.stringify(viewport));
+          const lastControl = tab === 'Players' ? panel.locator('.player-row').last() : tab === 'Activity' ? panel.locator('.activity-row').last() : panel.getByRole('button', { name: 'End game', exact: true });
+          assert.equal(await lastControl.evaluate(element => element.getBoundingClientRect().bottom <= innerHeight), true);
+        }
+      }
+      currentRoom = { ...room };
+      currentPlayers = players.map(player => ({ ...player }));
+      activityCount = 1;
       for (const width of [360, 390, 768, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         for (const [name, path] of [

@@ -256,12 +256,12 @@ export default function GameClient({
     setOperation(nextOperation);
   }
   return (
-    <AppShell>
+    <AppShell roomHeader={
       <div className="page-heading">
         <div>
           <p className="eyebrow text-primary">GAME NIGHT, IN PROGRESS</p>
-          <h1 className="mt-2">{room.room_name}</h1>
-          <div className="flex gap-3 items-center mt-3">
+          <h1 title={room.room_name}>{room.room_name}</h1>
+          <div className="room-metadata">
             <span className="text-sm text-muted-foreground">
               {room.room_code}
             </span>
@@ -269,6 +269,11 @@ export default function GameClient({
           </div>
         </div>
         <div className="flex gap-2">
+          {pendingRequests.length > 0 && (
+            <Button aria-label="Review" className="request-review" variant="secondary" onClick={() => openOperation('requests')} title={pendingRequests.length + ' pending payment requests'}>
+              Review ({pendingRequests.length})
+            </Button>
+          )}
           <CopyButton value={room.room_code} />
           <Button
             variant="ghost"
@@ -286,18 +291,7 @@ export default function GameClient({
           </Button>
         </div>
       </div>
-      {pendingRequests.length > 0 && (
-        <div className="panel flex items-center justify-between gap-3 mb-6">
-          <p>
-            {pendingRequests.length} payment{' '}
-            {pendingRequests.length === 1 ? 'request needs' : 'requests need'}{' '}
-            your attention.
-          </p>
-          <Button variant="secondary" onClick={() => openOperation('requests')}>
-            Review
-          </Button>
-        </div>
-      )}
+    }>
       <Tabs
         value={activeTab}
         onValueChange={setActiveTab}
@@ -321,7 +315,7 @@ export default function GameClient({
         </TabsList>
         <TabsContent value="wallet">
           <div className="wallet-layout">
-            <section>
+            <section className="wallet-primary">
               <PlayerBalanceCard
                 bankName={room.bank_display_name}
                 holderName={player.nickname}
@@ -358,11 +352,6 @@ export default function GameClient({
                   My QR
                 </button>
               </div>
-              {defeated && (
-                <p className="error-message mt-4">
-                  You are defeated. You can still follow the table.
-                </p>
-              )}
               <div className="pot-summary">
                 <span className="flex items-center gap-2 text-sm">
                   <Trophy size={18} className="text-primary" /> Shared pot
@@ -371,7 +360,7 @@ export default function GameClient({
                   {formatMoney(room.shared_pot_balance)}
                 </span>
               </div>
-              <div className="flex gap-2 mt-4 flex-wrap">
+              <div className="wallet-services">
                 <Button
                   variant="ghost"
                   disabled={defeated}
@@ -410,7 +399,7 @@ export default function GameClient({
                 </Button>
               </div>
             </section>
-            <section>
+            <section className="wallet-activity">
               <div className="section-heading">
                 <h2>Recent activity</h2>
                 <Button

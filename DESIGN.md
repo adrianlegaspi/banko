@@ -22,7 +22,7 @@ shadcn Radix components provide buttons, inputs, tabs and menus. Animate UI powe
 
 ## Responsive behavior
 
-Mobile setup stacks card preview and fields. Desktop setup and wallet use two columns. Game navigation sits at the bottom on mobile and above content on desktop. Sheets scroll independently and account for narrow screens.
+Mobile setup stacks card preview and fields. Desktop setup and wallet use two columns. Room fills the dynamic viewport with a compact header and no footer. Game navigation occupies the bottom layout row on mobile and sits above content on desktop. Lists scroll inside tab panels. Phone Wallet keeps history in the Activity tab; short landscape screens place the card beside wallet controls. Sheets scroll independently and account for narrow screens.
 
 ## Motion
 

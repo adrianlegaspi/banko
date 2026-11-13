@@ -26,3 +26,6 @@ Add rows only for references you actually inspected and verified. Include the pr
 | UI primitives | shadcn | https://ui.shadcn.com/docs/tailwind-v4 | React 19 and Tailwind 4 component ownership | Radix Nova preset |
 | Motion accessibility | Animate UI | https://animate-ui.com/docs/accessibility | Reduced motion and retained primitive semantics | Sheets and dropdowns only |
 | App icons | Next.js | https://nextjs.org/docs/app/api-reference/file-conventions/metadata/app-icons | File conventions wire SVG, ICO and Apple touch icons into metadata | SVG is canonical; raster exports come from scripts/generate-icons.mjs |
+
+| Viewport app layout | shadcn | https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/sidebar.tsx | Flex content with min-height zero and independent overflow | Adapted to room tabs |
+| Mobile viewport sizing | WebKit | https://webkit.org/blog/12445/new-webkit-features-in-safari-15-4/ | Dynamic viewport height tracks browser chrome | Room uses dvh with svh fallback |
